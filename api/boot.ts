@@ -5,8 +5,13 @@ import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "./router";
 import { createContext } from "./context";
 import { env } from "./lib/env";
+import { ensureSchema } from "./lib/ensure-schema";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
+
+// Ensure game tables exist at boot (idempotent; never crashes the server —
+// routers also retry lazily on first DB use if the DB was unreachable here).
+void ensureSchema();
 
 app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 app.use("/api/trpc/*", async (c) => {
