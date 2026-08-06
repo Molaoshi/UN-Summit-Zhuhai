@@ -4,64 +4,34 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 5.9% 10%;
-    --radius: 0.625rem;
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
-  }
-
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 240 5.9% 10%;
-    --secondary: 240 3.7% 15.9%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 3.7% 15.9%;
-    --muted-foreground: 240 5% 64.9%;
-    --accent: 240 3.7% 15.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 3.7% 15.9%;
-    --input: 240 3.7% 15.9%;
-    --ring: 240 4.9% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --background: 43 44% 94%; /* paper #F6F1E7 */
+    --foreground: 183 33% 18%; /* ink #1E3A3C */
+    --card: 45 60% 97%; /* card #FDFAF3 */
+    --card-foreground: 183 33% 18%;
+    --popover: 45 60% 97%;
+    --popover-foreground: 183 33% 18%;
+    --primary: 183 33% 18%;
+    --primary-foreground: 43 44% 94%;
+    --secondary: 42 40% 89%; /* paper-deep #EFE7D6 */
+    --secondary-foreground: 183 33% 18%;
+    --muted: 42 40% 89%;
+    --muted-foreground: 150 8% 36%; /* ink-soft #55635F */
+    --accent: 45 48% 83%; /* gold-soft #EADFBF */
+    --accent-foreground: 42 58% 30%; /* gold-ink #7A6120 */
+    --destructive: 7 51% 44%; /* #A94438 */
+    --destructive-foreground: 43 44% 94%;
+    --border: 40 35% 83%; /* hairline #E3DAC6 */
+    --input: 40 35% 83%;
+    --ring: 42 58% 48%; /* gold #C49A33 */
+    --radius: 0.75rem; /* 12px buttons/inputs */
+    --sidebar-background: 45 60% 97%;
+    --sidebar-foreground: 183 33% 18%;
+    --sidebar-primary: 183 33% 18%;
+    --sidebar-primary-foreground: 43 44% 94%;
+    --sidebar-accent: 42 40% 89%;
+    --sidebar-accent-foreground: 183 33% 18%;
+    --sidebar-border: 40 35% 83%;
+    --sidebar-ring: 42 58% 48%;
   }
 }
 
@@ -69,7 +39,48 @@
   * {
     @apply border-border;
   }
+  html {
+    scroll-behavior: smooth;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-paper text-ink font-sans antialiased;
+  }
+  /* Paper texture: fixed tile at 4% opacity over paper background */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image: url("/paper-texture.png");
+    background-repeat: repeat;
+    opacity: 0.04;
+    pointer-events: none;
+  }
+  /* Focus rings: 3px gold at 40% opacity */
+  :focus-visible {
+    outline: 3px solid rgba(196, 154, 51, 0.4);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: Fraunces, Georgia, serif;
+  }
+  /* Diagonal CONFIDENTIAL watermark (ink at 4%) */
+  .watermark-confidential {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      transparent 0px,
+      transparent 46px,
+      rgba(30, 58, 60, 0.04) 46px,
+      rgba(30, 58, 60, 0.04) 48px
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
   }
 }
