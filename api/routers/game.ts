@@ -20,11 +20,14 @@ import {
   type CountryData,
 } from "@contracts/game-data";
 import {
-  biggestBlocNames,
+  claimedScoreboard,
   computeScore,
+  emptyScore,
   evaluateMissions,
+  finalBlocSummaries,
   type GameFacts,
 } from "../lib/scoring";
+import { claimedCountries, claimedCountryData } from "../lib/seating";
 import { createRouter, publicQuery } from "../middleware";
 import {
   actionsUsed,
@@ -97,7 +100,8 @@ function feedEntry(d: Deal) {
 function espionagePayload(
   countryName: string,
   facts: GameFacts,
-  active: CountryData[],
+  /** CLAIMED countries only — spying on an empty chair is useless. */
+  visible: CountryData[],
 ) {
   const me = COUNTRY_BY_NAME[countryName];
   if (!me?.hasEspionage) return null;
@@ -108,7 +112,7 @@ function espionagePayload(
       ) ?? null)
     : null;
   return {
-    allPowerCards: active.map((c) => ({
+    allPowerCards: visible.map((c) => ({
       country: c.name,
       flag: c.flag,
       assets: c.assets,
@@ -132,6 +136,11 @@ export const gameRouter = createRouter({
       const d = await db();
       const facts = await buildFacts(d, room);
       const allDeals = await roomDeals(d, room.id);
+      const roomPlayers = await d
+        .select()
+        .from(players)
+        .where(eq(players.roomId, room.id));
+      const claimed = claimedCountries(roomPlayers);
       const blocs = facts.currentBlocs;
 
       const myCountryName = player.countryName;
@@ -162,6 +171,9 @@ export const gameRouter = createRouter({
 
       const accepted = allDeals.filter((x) => x.status === "accepted");
       const active = activeCountryData(room);
+      // Only claimed countries have a delegate — their public missions are
+      // the only ones visible/evaluated at the table.
+      const claimedActive = claimedCountryData(active, claimed);
 
       return {
         room: {
@@ -199,7 +211,7 @@ export const gameRouter = createRouter({
           max: MAX_DEAL_ACTIONS_PER_ROUND,
         },
         feed: accepted.map(feedEntry),
-        publicMissions: active.map((c) => ({
+        publicMissions: claimedActive.map((c) => ({
           country: c.name,
           countryZh: c.nameZh ?? c.name,
           flag: c.flag,
@@ -214,7 +226,7 @@ export const gameRouter = createRouter({
         // Current bloc of every active country — names only, no scores.
         blocs,
         espionage: myCountryName
-          ? espionagePayload(myCountryName, facts, active)
+          ? espionagePayload(myCountryName, facts, claimedActive)
           : null,
       };
     }),
@@ -234,21 +246,30 @@ export const gameRouter = createRouter({
         .orderBy(asc(players.id));
 
       const active = activeCountryData(room);
+      // Unclaimed active countries keep their seat/bloc but have no delegate:
+      // no missions, no score rows.
       const countries = await Promise.all(
-        active.map(async (c) => ({
-          country: c.name,
-          countryZh: c.nameZh ?? c.name,
-          flag: c.flag,
-          bloc: facts.currentBlocs[c.name],
-          playerName:
-            roomPlayers.find((p) => p.countryName === c.name)?.name ?? null,
-          missions: evaluateMissions(c.name, facts),
-          score: computeScore(c.name, facts),
-          actionsUsedThisRound:
-            room.status === "playing"
-              ? await actionsUsed(d, room.id, room.currentRound, c.name)
-              : 0,
-        })),
+        active.map(async (c) => {
+          const holder = roomPlayers.find(
+            (p) => !p.isAdmin && p.countryName === c.name,
+          );
+          const claimed = !!holder;
+          return {
+            country: c.name,
+            countryZh: c.nameZh ?? c.name,
+            flag: c.flag,
+            bloc: facts.currentBlocs[c.name],
+            claimed,
+            playerName: holder?.name ?? null,
+            playerId: holder?.id ?? null,
+            missions: claimed ? evaluateMissions(c.name, facts) : [],
+            score: claimed ? computeScore(c.name, facts) : emptyScore(c.name),
+            actionsUsedThisRound:
+              claimed && room.status === "playing"
+                ? await actionsUsed(d, room.id, room.currentRound, c.name)
+                : 0,
+          };
+        }),
       );
 
       const blocHistory = await d
@@ -273,6 +294,7 @@ export const gameRouter = createRouter({
         },
         activeCountries: activeCountriesOf(room),
         players: roomPlayers.map((p) => ({
+          id: p.id,
           name: p.name,
           isAdmin: p.isAdmin,
           countryName: p.countryName,
@@ -358,34 +380,21 @@ export const gameRouter = createRouter({
     const d = await db();
     const facts = await buildFacts(d, room, { final: true });
     const allDeals = await roomDeals(d, room.id);
-    // Active roster only (unclaimed-but-active countries still appear).
+    const roomPlayers = await d
+      .select()
+      .from(players)
+      .where(eq(players.roomId, room.id));
+    const claimed = claimedCountries(roomPlayers);
+    // Active roster only (unclaimed seats still sit in their blocs, but have
+    // no delegate and earn no score).
     const active = activeCountryData(room);
 
-    // Final blocs with member lists.
-    const blocMap = new Map<string, string[]>();
-    for (const c of active) {
-      const bloc = facts.currentBlocs[c.name];
-      blocMap.set(bloc, [...(blocMap.get(bloc) ?? []), c.name]);
-    }
-    const biggest = biggestBlocNames(facts);
-    const blocs = [...blocMap.entries()]
-      .map(([name, members]) => ({
-        name,
-        members,
-        size: members.length,
-        isBiggest: biggest.includes(name),
-      }))
-      .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
+    // Final blocs list ALL active members; unclaimed ones are flagged so the
+    // frontend can dim them.
+    const blocs = finalBlocSummaries(active, facts, claimed);
 
-    // Ranked scoreboard with full per-country breakdown.
-    const scoreboard = active
-      .map((c) => ({
-        flag: c.flag,
-        countryZh: c.nameZh ?? c.name,
-        ...computeScore(c.name, facts),
-      }))
-      .sort((a, b) => b.total - a.total || a.country.localeCompare(b.country))
-      .map((row, i) => ({ rank: i + 1, ...row }));
+    // Ranked scoreboard over CLAIMED countries only.
+    const scoreboard = claimedScoreboard(active, facts, claimed);
 
     return {
       roomCode: room.code,

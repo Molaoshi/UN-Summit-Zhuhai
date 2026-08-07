@@ -124,13 +124,12 @@ export const roomRouter = createRouter({
           message: "No room with that code. Check the code and try again.",
         });
       }
-      if (room.status !== "lobby") {
+      // Late joiners are welcome mid-game: the teacher seats them with
+      // admin.assignSeat. Only an ended game rejects new players.
+      if (room.status === "ended") {
         throw new TRPCError({
           code: "CONFLICT",
-          message:
-            room.status === "ended"
-              ? "This game has already ended."
-              : "This game already started — ask your teacher.",
+          message: "This game has already ended.",
         });
       }
       const nameTaken = await d.query.players.findFirst({

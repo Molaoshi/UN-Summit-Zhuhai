@@ -13,6 +13,7 @@ import {
   scoreAdjustments,
 } from "@db/schema";
 import { COUNTRY_BY_NAME, resolveActiveCountries } from "@contracts/game-data";
+import { planAssignSeat } from "../lib/seating";
 import { createRouter, publicQuery } from "../middleware";
 import { activeCountriesOf, db, logActivity, requireAdmin } from "./helpers";
 
@@ -211,6 +212,99 @@ export const adminRouter = createRouter({
         { country: input.country, delta: input.delta, reason: input.reason },
       );
       return { ok: true };
+    }),
+
+  /**
+   * Teacher assigns a logged-in player to a country seat. Works in the lobby
+   * AND mid-game (late joiners). If the country is held by another player
+   * they are released; if the player already holds another seat they move.
+   */
+  assignSeat: publicQuery
+    .input(
+      z.object({
+        ...adminAuth,
+        playerId: z.number().int().positive(),
+        country: z.string().min(1),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const room = await requireAdmin(input.code, input.pin);
+      if (room.status === "ended") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "The game has ended — seats are locked.",
+        });
+      }
+      const country = COUNTRY_BY_NAME[input.country];
+      if (!country) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown country." });
+      }
+      const d = await db();
+      const roomPlayers = await d
+        .select()
+        .from(players)
+        .where(eq(players.roomId, room.id));
+      const plan = planAssignSeat(
+        roomPlayers,
+        input.playerId,
+        country.name,
+        activeCountriesOf(room),
+      );
+      if (!plan.ok) {
+        throw new TRPCError({
+          code:
+            plan.reason === "player_not_found"
+              ? "NOT_FOUND"
+              : plan.reason === "player_is_admin"
+                ? "FORBIDDEN"
+                : "BAD_REQUEST",
+          message:
+            plan.reason === "player_not_found"
+              ? "No player with that id in this room."
+              : plan.reason === "player_is_admin"
+                ? "The teacher runs the room and does not take a seat."
+                : `${country.name} is not in this game's roster.`,
+        });
+      }
+      if (!plan.noop) {
+        // Evict the current holder first (unique room+country index).
+        if (plan.evictedPlayer) {
+          await d
+            .update(players)
+            .set({ countryName: null })
+            .where(eq(players.id, plan.evictedPlayer.id));
+        }
+        await d
+          .update(players)
+          .set({ countryName: country.name })
+          .where(eq(players.id, plan.player.id));
+      }
+      const evicted = plan.evictedPlayer;
+      const moved = plan.previousCountry && plan.previousCountry !== country.name;
+      await logActivity(
+        d,
+        room,
+        "seat_assigned",
+        `Teacher seated ${plan.player.name} as ${country.flag} ${country.name}` +
+          `${moved ? ` (moved from ${plan.previousCountry})` : ""}` +
+          `${evicted ? `; ${evicted.name} was released` : ""}.`,
+        {
+          player: plan.player.name,
+          country: country.name,
+          by: "admin",
+          previousCountry: plan.previousCountry,
+          evictedPlayer: evicted?.name ?? null,
+        },
+      );
+      return {
+        ok: true,
+        changed: !plan.noop,
+        playerId: plan.player.id,
+        playerName: plan.player.name,
+        country: country.name,
+        previousCountry: plan.previousCountry,
+        evictedPlayer: evicted ? { id: evicted.id, name: evicted.name } : null,
+      };
     }),
 
   /** Release a claimed seat (works in lobby and mid-game). */

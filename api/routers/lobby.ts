@@ -6,6 +6,7 @@ import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { players } from "@db/schema";
 import { COUNTRY_BY_NAME } from "@contracts/game-data";
+import { unseatedPlayers } from "../lib/seating";
 import { createRouter, publicQuery } from "../middleware";
 import {
   activeCountriesOf,
@@ -35,13 +36,17 @@ export const lobbyRouter = createRouter({
 
     const active = activeCountryData(room);
     const seats = active.map((c) => {
-      const holder = roomPlayers.find((p) => p.countryName === c.name);
+      const holder = roomPlayers.find(
+        (p) => !p.isAdmin && p.countryName === c.name,
+      );
       return {
         country: c.name,
         countryZh: c.nameZh ?? c.name,
         flag: c.flag,
         startingBloc: c.startingBloc,
         claimedBy: holder?.name ?? null,
+        /** Player id holding this seat (the admin needs ids for assignSeat). */
+        playerId: holder?.id ?? null,
       };
     });
 
@@ -51,9 +56,7 @@ export const lobbyRouter = createRouter({
       roundPhase: room.roundPhase,
       activeCountries: activeCountriesOf(room),
       seats,
-      unseated: roomPlayers
-        .filter((p) => !p.countryName && !p.isAdmin)
-        .map((p) => p.name),
+      unseated: unseatedPlayers(roomPlayers),
     };
   }),
 

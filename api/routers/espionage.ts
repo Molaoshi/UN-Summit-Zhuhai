@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
-import { espionagePeeks } from "@db/schema";
+import { espionagePeeks, players } from "@db/schema";
 import { COUNTRY_BY_NAME } from "@contracts/game-data";
 import { createRouter, publicQuery } from "../middleware";
 import {
@@ -57,6 +57,19 @@ export const espionageRouter = createRouter({
         });
       }
       const d = await db();
+      // Only claimed countries have a delegate with secrets worth stealing.
+      const targetPlayer = await d.query.players.findFirst({
+        where: and(
+          eq(players.roomId, room.id),
+          eq(players.countryName, target.name),
+        ),
+      });
+      if (!targetPlayer) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: `${target.name} has no delegate yet — there is no secret file to peek at.`,
+        });
+      }
       const existing = await d.query.espionagePeeks.findFirst({
         where: and(
           eq(espionagePeeks.roomId, room.id),

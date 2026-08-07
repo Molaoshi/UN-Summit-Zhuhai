@@ -412,6 +412,85 @@ export function evaluateMissions(
   });
 }
 
+/** Zeroed breakdown for an active country with no seated player. */
+export function emptyScore(country: string): ScoreBreakdown {
+  return {
+    country,
+    dealPoints: 0,
+    missionPoints: 0,
+    adjustments: 0,
+    total: 0,
+    missions: [],
+  };
+}
+
+/** One ranked scoreboard row (claimed countries only). */
+export type ScoreboardRow = ScoreBreakdown & {
+  rank: number;
+  flag: string;
+  countryZh: string;
+};
+
+/**
+ * Ranked final scoreboard over the CLAIMED countries only — an unclaimed
+ * seat has no delegate, so it earns no missions or points. Unclaimed
+ * countries still count inside the bloc math above (they are seats at the
+ * summit), which is why `facts` must carry ALL active countries' blocs.
+ */
+export function claimedScoreboard(
+  active: CountryData[],
+  facts: GameFacts,
+  claimed: Set<string>,
+): ScoreboardRow[] {
+  return active
+    .filter((c) => claimed.has(c.name))
+    .map((c) => ({
+      flag: c.flag,
+      countryZh: c.nameZh ?? c.name,
+      ...computeScore(c.name, facts),
+    }))
+    .sort((a, b) => b.total - a.total || a.country.localeCompare(b.country))
+    .map((row, i) => ({ rank: i + 1, ...row }));
+}
+
+/** Final bloc summary; members list ALL active countries (claimed or not). */
+export interface FinalBlocSummary {
+  name: string;
+  /** All active member countries, claimed or not. */
+  members: string[];
+  /** Subset of members with no seated player (frontend dims these). */
+  unclaimedMembers: string[];
+  size: number;
+  isBiggest: boolean;
+}
+
+/**
+ * Final blocs with member lists. Membership/size/biggest use the full active
+ * roster (unclaimed seats still sit in their bloc); unclaimed members are
+ * flagged separately so the UI can render them as empty chairs.
+ */
+export function finalBlocSummaries(
+  active: CountryData[],
+  facts: GameFacts,
+  claimed: Set<string>,
+): FinalBlocSummary[] {
+  const blocMap = new Map<string, string[]>();
+  for (const c of active) {
+    const bloc = facts.currentBlocs[c.name];
+    blocMap.set(bloc, [...(blocMap.get(bloc) ?? []), c.name]);
+  }
+  const biggest = biggestBlocNames(facts);
+  return [...blocMap.entries()]
+    .map(([name, members]) => ({
+      name,
+      members,
+      unclaimedMembers: members.filter((m) => !claimed.has(m)),
+      size: members.length,
+      isBiggest: biggest.includes(name),
+    }))
+    .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
+}
+
 /**
  * Full score breakdown. Deal points come from the points persisted on each
  * accepted deal (computed at signing time); falls back to re-computation
