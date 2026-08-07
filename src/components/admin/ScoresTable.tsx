@@ -32,10 +32,12 @@ export interface ScoresTableProps {
   projector: boolean
   /** False before the game starts (friendly empty state instead). */
   started: boolean
+  /** Spectator mode: hide the score-edit buttons. */
+  readOnly?: boolean
 }
 
 /** Live sortable scores table — the projector centerpiece. */
-export default function ScoresTable({ countries, customBlocs, projector, started }: ScoresTableProps) {
+export default function ScoresTable({ countries, customBlocs, projector, started, readOnly = false }: ScoresTableProps) {
   const { lang } = useLang()
   const t = useStrings(adminStrings).scores
   const [sortKey, setSortKey] = useState<SortKey>('total')
@@ -131,9 +133,11 @@ export default function ScoresTable({ countries, customBlocs, projector, started
               <th className="px-3 py-3 text-right">{headerBtn('adjustments', t.headers.adjust)}</th>
               <th className="px-3 py-3 text-right">{headerBtn('total', t.headers.total)}</th>
               <th className="hidden px-3 py-3 xl:table-cell">{t.headers.dealActions}</th>
-              <th className="w-14 px-3 py-3">
-                <span className="sr-only">{t.headers.editScore}</span>
-              </th>
+              {!readOnly && (
+                <th className="w-14 px-3 py-3">
+                  <span className="sr-only">{t.headers.editScore}</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -212,25 +216,27 @@ export default function ScoresTable({ countries, customBlocs, projector, started
                       className="[&>span]:sr-only"
                     />
                   </td>
-                  <td className="px-3 py-2">
-                    <motion.button
-                      whileTap={{ scale: 0.9 }}
-                      type="button"
-                      onClick={() => setEditing(c)}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hairline bg-paper text-ink-soft transition-colors hover:bg-gold-soft hover:text-gold-ink"
-                      aria-label={t.adjustAria(countryName(c.country, lang))}
-                      title={t.adjustAria(countryName(c.country, lang))}
-                    >
-                      <PenLine className="h-4 w-4" aria-hidden />
-                    </motion.button>
-                  </td>
+                  {!readOnly && (
+                    <td className="px-3 py-2">
+                      <motion.button
+                        whileTap={{ scale: 0.9 }}
+                        type="button"
+                        onClick={() => setEditing(c)}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hairline bg-paper text-ink-soft transition-colors hover:bg-gold-soft hover:text-gold-ink"
+                        aria-label={t.adjustAria(countryName(c.country, lang))}
+                        title={t.adjustAria(countryName(c.country, lang))}
+                      >
+                        <PenLine className="h-4 w-4" aria-hidden />
+                      </motion.button>
+                    </td>
+                  )}
                 </motion.tr>
               )
             })}
           </tbody>
         </table>
       </div>
-      <ScoreAdjustSheet country={editing} onClose={() => setEditing(null)} />
+      {!readOnly && <ScoreAdjustSheet country={editing} onClose={() => setEditing(null)} />}
     </section>
   )
 }

@@ -42,6 +42,11 @@ const lobbyStrings = {
       rosterEmpty: 'No one is seated yet — hang tight!',
     },
     openTeacherControls: 'Open teacher controls',
+    assistant: {
+      title: 'You are an Admin Assistant 👁',
+      body: 'The teacher made you an assistant — watch the whole summit live on the read-only spectator dashboard.',
+      open: 'Open spectator dashboard',
+    },
     admin: {
       onlyYou: 'Only you can see this',
       title: 'Teacher controls',
@@ -124,6 +129,11 @@ const lobbyStrings = {
       rosterEmpty: '还没有同学入座——稍安勿躁！',
     },
     openTeacherControls: '打开老师控制台',
+    assistant: {
+      title: '你是助教（观察员）👁',
+      body: '老师已把你设为助教——你可以在只读观察面板上实时观看整场峰会。',
+      open: '打开观察面板',
+    },
     admin: {
       onlyYou: '只有你能看到这个面板',
       title: '老师控制台',

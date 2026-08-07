@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router'
-import { Flag, Play, WifiOff } from 'lucide-react'
+import { Eye, Flag, Play, WifiOff } from 'lucide-react'
 import { trpc } from '@/providers/trpc'
 import SummitHeader from '@/components/SummitHeader'
 import Toast from '@/components/Toast'
@@ -18,14 +18,17 @@ import {
   AdminCtx,
   PROJECTOR_KEY,
   clearAdminCreds,
+  clearAdminUnlock,
   customBlocNames,
+  isAdminUnlocked,
   loadAdminCreds,
+  markAdminUnlocked,
   saveAdminCreds,
 } from '@/components/admin/admin-utils'
-import type { AdminCreds } from '@/components/admin/admin-utils'
+import type { AdminCreds, AdminState } from '@/components/admin/admin-utils'
 import { useStrings } from '@/lib/i18n'
 import { adminStrings } from '@/lib/i18n/admin'
-import { clearSession } from '@/lib/session'
+import { clearSession, loadSession } from '@/lib/session'
 
 function DashboardSkeleton() {
   const t = useStrings(adminStrings)
@@ -40,92 +43,52 @@ function DashboardSkeleton() {
   )
 }
 
-/** Admin dashboard: the teacher's projector control room. */
-export default function Admin() {
+interface DashboardViewProps {
+  /** Read-only mode for admin assistants (no PIN, no write UI). */
+  spectator: boolean
+  state: AdminState | undefined
+  offline: boolean
+  /** Real creds for the teacher; a placeholder (empty pin) for spectators. */
+  creds: AdminCreds
+  /** Teacher only: lock the dashboard back to the PIN gate. */
+  onLock?: () => void
+  /** Teacher only: sign out of a finished room and go home. */
+  onStartNewGame?: () => void
+  /** Invalidate the underlying state query (adminState or spectatorState). */
+  invalidate: () => void
+}
+
+/** Shared dashboard body for the teacher (read-write) and assistants (read-only). */
+function DashboardView({
+  spectator,
+  state,
+  offline,
+  creds,
+  onLock,
+  onStartNewGame,
+  invalidate,
+}: DashboardViewProps) {
   const t = useStrings(adminStrings)
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const [creds, setCreds] = useState<AdminCreds | null>(() => loadAdminCreds())
-  const [gateError, setGateError] = useState<string | null>(null)
   const [projector, setProjector] = useState(() => localStorage.getItem(PROJECTOR_KEY) === '1')
   const [toast, setToast] = useState<string | null>(null)
 
-  const utils = trpc.useUtils()
-  const query = trpc.game.adminState.useQuery(
-    { code: creds?.code ?? '', pin: creds?.pin ?? '' },
-    { enabled: !!creds, refetchInterval: 3000, retry: false },
-  )
-
-  const errorCode = query.error?.data?.code
-  const authFailed = !!creds && !!query.error && errorCode === 'UNAUTHORIZED'
-  const offline = !!creds && !!query.error && !authFailed
-
-  // Wrong PIN → drop stored credentials and re-gate with an error.
-  useEffect(() => {
-    if (authFailed) {
-      clearAdminCreds()
-      setCreds(null)
-      setGateError(t.pinGate.wrongPin)
-    }
-  }, [authFailed, t])
-
-  const state = query.data
   const customBlocs = useMemo(() => (state ? customBlocNames(state) : []), [state])
 
   const ctxValue = useMemo(
-    () =>
-      creds
-        ? {
-            creds,
-            projector,
-            notify: (message: string) => setToast(message),
-            refresh: () => {
-              void utils.game.adminState.invalidate()
-            },
-          }
-        : null,
-    [creds, projector, utils],
+    () => ({
+      creds,
+      projector,
+      notify: (message: string) => setToast(message),
+      refresh: invalidate,
+    }),
+    [creds, projector, invalidate],
   )
-
-  const handleGate = (next: AdminCreds) => {
-    saveAdminCreds(next)
-    setGateError(null)
-    setCreds(next)
-  }
-
-  const handleLock = () => {
-    clearAdminCreds()
-    setCreds(null)
-    setGateError(null)
-  }
 
   const toggleProjector = () => {
     setProjector((p) => {
       localStorage.setItem(PROJECTOR_KEY, p ? '0' : '1')
       return !p
     })
-  }
-
-  /** Sign out of the finished room entirely and go home for a fresh game. */
-  const startNewGame = () => {
-    clearSession()
-    clearAdminCreds()
-    navigate('/')
-  }
-
-  // ── PIN gate ──────────────────────────────────────────────────────────────
-  if (!creds) {
-    return <PinGate initialCode={searchParams.get('code') ?? ''} error={gateError} onSubmit={handleGate} />
-  }
-
-  // ── Loading ───────────────────────────────────────────────────────────────
-  if (query.isPending && !state) {
-    return (
-      <div className="min-h-[100dvh] bg-paper">
-        <SummitHeader variant="landing" />
-        <DashboardSkeleton />
-      </div>
-    )
   }
 
   const room = state?.room ?? { code: creds.code, status: 'lobby' as const, currentRound: 0, roundPhase: 'negotiation' as const }
@@ -169,14 +132,16 @@ export default function Admin() {
                 <Flag className="h-5 w-5" aria-hidden />
                 {t.ended.viewResults}
               </Link>
-              <button
-                type="button"
-                onClick={startNewGame}
-                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-ink px-5 text-lg font-extrabold text-ink transition-colors hover:bg-paper-deep"
-              >
-                <Play className="h-5 w-5" aria-hidden />
-                {t.ended.newGame}
-              </button>
+              {!spectator && onStartNewGame && (
+                <button
+                  type="button"
+                  onClick={onStartNewGame}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-ink px-5 text-lg font-extrabold text-ink transition-colors hover:bg-paper-deep"
+                >
+                  <Play className="h-5 w-5" aria-hidden />
+                  {t.ended.newGame}
+                </button>
+              )}
             </div>
           </div>
         </main>
@@ -210,7 +175,8 @@ export default function Admin() {
             offline={offline}
             projector={projector}
             onToggleProjector={toggleProjector}
-            onLock={handleLock}
+            onLock={onLock ?? (() => {})}
+            spectator={spectator}
           />
         )}
 
@@ -231,10 +197,11 @@ export default function Admin() {
                 customBlocs={customBlocs}
                 projector={projector}
                 started={started}
+                readOnly={spectator}
               />
             </div>
             <div className="order-1 lg:order-none lg:col-span-5 lg:col-start-8 lg:row-start-1">
-              <PacingCard state={state} />
+              <PacingCard state={state} readOnly={spectator} />
             </div>
             <div className="order-5 lg:order-none lg:col-span-5 lg:col-start-8 lg:row-start-2">
               <BlocMonitor state={state} customBlocs={customBlocs} started={started} />
@@ -243,34 +210,42 @@ export default function Admin() {
               <DealsMonitor state={state} started={started} />
             </div>
             <div className="order-4 lg:order-none lg:col-span-7 lg:col-start-1 lg:row-span-2 lg:row-start-2">
-              <MissionMatrix countries={state.countries} projector={projector} started={started} />
+              <MissionMatrix countries={state.countries} projector={projector} started={started} readOnly={spectator} />
             </div>
-            <div className="order-6 lg:order-none lg:col-span-5 lg:col-start-1 lg:row-start-4">
-              {started && (
-                <p className="mb-2 text-sm font-semibold text-ink-soft">
-                  {t.assign.rosterSummary(state.activeCountries.length)}
-                </p>
-              )}
-              <AssignPlayers
-                code={creds.code}
-                pin={creds.pin}
-                players={state.players
-                  .filter((p) => !p.isAdmin)
-                  .map((p) => ({ id: p.id, name: p.name, country: p.countryName }))}
-                countries={state.countries.map((c) => ({
-                  country: c.country,
-                  flag: c.flag,
-                  playerName: c.playerName,
-                  playerId: c.playerId,
-                }))}
-                onToast={setToast}
-                onChanged={() => void utils.game.adminState.invalidate()}
-              />
-            </div>
-            <div className="order-7 lg:order-none lg:col-span-7 lg:col-start-6 lg:row-start-4">
+            {!spectator && (
+              <div className="order-6 lg:order-none lg:col-span-5 lg:col-start-1 lg:row-start-4">
+                {started && (
+                  <p className="mb-2 text-sm font-semibold text-ink-soft">
+                    {t.assign.rosterSummary(state.activeCountries.length)}
+                  </p>
+                )}
+                <AssignPlayers
+                  code={creds.code}
+                  pin={creds.pin}
+                  players={state.players
+                    .filter((p) => !p.isAdmin)
+                    .map((p) => ({ id: p.id, name: p.name, country: p.countryName, isAssistant: p.isAssistant }))}
+                  countries={state.countries.map((c) => ({
+                    country: c.country,
+                    flag: c.flag,
+                    playerName: c.playerName,
+                    playerId: c.playerId,
+                  }))}
+                  onToast={setToast}
+                  onChanged={invalidate}
+                />
+              </div>
+            )}
+            <div
+              className={
+                spectator
+                  ? 'order-6 lg:order-none lg:col-span-7 lg:col-start-1 lg:row-start-4'
+                  : 'order-7 lg:order-none lg:col-span-7 lg:col-start-6 lg:row-start-4'
+              }
+            >
               <ActivityLogPanel log={state.activityLog} projector={projector} />
             </div>
-            {!started && (
+            {!spectator && !started && (
               <div className="order-8 lg:order-none lg:col-span-12 lg:row-start-5">
                 <CountryPicker
                   code={creds.code}
@@ -278,7 +253,7 @@ export default function Admin() {
                   activeCountries={state.activeCountries}
                   canEdit
                   onToast={setToast}
-                  onSaved={() => void utils.game.adminState.invalidate()}
+                  onSaved={invalidate}
                 />
               </div>
             )}
@@ -289,4 +264,160 @@ export default function Admin() {
       </div>
     </AdminCtx.Provider>
   )
+}
+
+/** Teacher dashboard: gated by the admin PIN on every new browser session. */
+function TeacherAdmin() {
+  const t = useStrings(adminStrings)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  // Stored localStorage creds only PREFILL the gate's room code — the teacher
+  // re-enters the PIN once per browser session (sessionStorage unlock flag).
+  const [creds, setCreds] = useState<AdminCreds | null>(() => {
+    const stored = loadAdminCreds()
+    return stored && isAdminUnlocked(stored.code) ? stored : null
+  })
+  const [gateError, setGateError] = useState<string | null>(null)
+
+  const utils = trpc.useUtils()
+  const query = trpc.game.adminState.useQuery(
+    { code: creds?.code ?? '', pin: creds?.pin ?? '' },
+    { enabled: !!creds, refetchInterval: 3000, retry: false },
+  )
+
+  const errorCode = query.error?.data?.code
+  const authFailed = !!creds && !!query.error && errorCode === 'UNAUTHORIZED'
+  const offline = !!creds && !!query.error && !authFailed
+
+  // Wrong PIN → drop stored credentials and re-gate with an error.
+  useEffect(() => {
+    if (authFailed && creds) {
+      clearAdminUnlock(creds.code)
+      clearAdminCreds()
+      setCreds(null)
+      setGateError(t.pinGate.wrongPin)
+    }
+  }, [authFailed, creds, t])
+
+  const handleGate = (next: AdminCreds) => {
+    saveAdminCreds(next) // room-code prefill for future sessions (+ lobby admin)
+    markAdminUnlocked(next.code) // this browser session stays unlocked
+    setGateError(null)
+    setCreds(next)
+  }
+
+  const handleLock = () => {
+    if (creds) clearAdminUnlock(creds.code)
+    setCreds(null)
+    setGateError(null)
+  }
+
+  /** Sign out of the finished room entirely and go home for a fresh game. */
+  const startNewGame = () => {
+    clearSession()
+    if (creds) clearAdminUnlock(creds.code)
+    clearAdminCreds()
+    navigate('/')
+  }
+
+  // ── PIN gate ──────────────────────────────────────────────────────────────
+  if (!creds) {
+    return (
+      <PinGate
+        initialCode={searchParams.get('code') ?? loadAdminCreds()?.code ?? ''}
+        error={gateError}
+        onSubmit={handleGate}
+      />
+    )
+  }
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (query.isPending && !query.data) {
+    return (
+      <div className="min-h-[100dvh] bg-paper">
+        <SummitHeader variant="landing" />
+        <DashboardSkeleton />
+      </div>
+    )
+  }
+
+  return (
+    <DashboardView
+      spectator={false}
+      state={query.data}
+      offline={offline}
+      creds={creds}
+      onLock={handleLock}
+      onStartNewGame={startNewGame}
+      invalidate={() => void utils.game.adminState.invalidate()}
+    />
+  )
+}
+
+/** Read-only dashboard for admin assistants (token auth, no PIN gate). */
+function SpectatorAdmin() {
+  const t = useStrings(adminStrings)
+  const [session] = useState(loadSession)
+  const token = session?.token ?? ''
+
+  const utils = trpc.useUtils()
+  const query = trpc.game.spectatorState.useQuery(
+    { token },
+    { enabled: !!token, refetchInterval: 3500, retry: false },
+  )
+
+  const errorCode = query.error?.data?.code
+  const forbidden = !token || (!!query.error && (errorCode === 'FORBIDDEN' || errorCode === 'UNAUTHORIZED'))
+  const offline = !!query.error && !forbidden
+
+  // ── Not an assistant ──────────────────────────────────────────────────────
+  if (forbidden) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col bg-paper">
+        <SummitHeader variant="landing" />
+        <main className="flex flex-1 items-center justify-center px-4 py-10">
+          <div className="w-full max-w-md rounded-2xl border border-hairline bg-card p-6 text-center shadow-card md:p-8">
+            <span className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gold-soft text-gold-ink">
+              <Eye className="h-7 w-7" aria-hidden />
+            </span>
+            <h1 className="font-display text-2xl font-semibold text-ink">{t.spectator.forbiddenTitle}</h1>
+            <p className="mt-2 text-base leading-7 text-ink-soft">{t.spectator.forbiddenBody}</p>
+            <Link
+              to="/"
+              className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ink px-5 text-lg font-extrabold text-paper shadow-card transition-colors hover:bg-ink/90"
+            >
+              {t.spectator.backHome}
+            </Link>
+          </div>
+        </main>
+      </div>
+    )
+  }
+
+  // ── Loading ───────────────────────────────────────────────────────────────
+  if (query.isPending && !query.data) {
+    return (
+      <div className="min-h-[100dvh] bg-paper">
+        <SummitHeader variant="landing" />
+        <DashboardSkeleton />
+      </div>
+    )
+  }
+
+  const roomCode = query.data?.room.code ?? session?.roomCode ?? ''
+
+  return (
+    <DashboardView
+      spectator
+      state={query.data}
+      offline={offline}
+      creds={{ code: roomCode, pin: '' }}
+      invalidate={() => void utils.game.spectatorState.invalidate()}
+    />
+  )
+}
+
+/** Admin dashboard: the teacher's projector control room (or a read-only spectator view). */
+export default function Admin({ spectator = false }: { spectator?: boolean }) {
+  return spectator ? <SpectatorAdmin /> : <TeacherAdmin />
 }

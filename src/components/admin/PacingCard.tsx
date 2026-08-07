@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 const PLAN_KEY = 'summit:plan-rounds'
 
 /** Round pacing card: suggested pace track + per-round history. */
-export default function PacingCard({ state }: { state: AdminState }) {
+export default function PacingCard({ state, readOnly = false }: { state: AdminState; readOnly?: boolean }) {
   const t = useStrings(adminStrings).pacing
   const [plan, setPlan] = useState<number>(() => {
     const raw = Number(localStorage.getItem(PLAN_KEY))
@@ -78,21 +78,23 @@ export default function PacingCard({ state }: { state: AdminState }) {
             </motion.span>
           )
         })}
-        <label className="ml-auto flex items-center gap-2 text-sm font-bold text-ink-soft">
-          {t.plan}
-          <select
-            value={plan}
-            onChange={(e) => choosePlan(Number(e.target.value))}
-            className="rounded-lg border border-hairline bg-paper px-2 py-1.5 font-mono text-sm font-semibold text-ink"
-            aria-label={t.planAria}
-          >
-            {[4, 5, 6].map((n) => (
-              <option key={n} value={n}>
-                {t.planOption(n)}
-              </option>
-            ))}
-          </select>
-        </label>
+        {!readOnly && (
+          <label className="ml-auto flex items-center gap-2 text-sm font-bold text-ink-soft">
+            {t.plan}
+            <select
+              value={plan}
+              onChange={(e) => choosePlan(Number(e.target.value))}
+              className="rounded-lg border border-hairline bg-paper px-2 py-1.5 font-mono text-sm font-semibold text-ink"
+              aria-label={t.planAria}
+            >
+              {[4, 5, 6].map((n) => (
+                <option key={n} value={n}>
+                  {t.planOption(n)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
 
       <p className="mt-4 flex items-center gap-2 text-lg leading-7 text-ink">

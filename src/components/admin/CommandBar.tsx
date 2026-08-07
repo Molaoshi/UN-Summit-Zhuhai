@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import { motion } from 'framer-motion'
-import { Copy, Flag, Lock, Play, Presentation, Projector, RefreshCw } from 'lucide-react'
+import { Copy, Eye, Flag, Lock, Play, Presentation, Projector, RefreshCw } from 'lucide-react'
 import { trpc } from '@/providers/trpc'
 import ConfirmDialog from '@/components/admin/ConfirmDialog'
 import { useAdminCtx } from '@/components/admin/admin-utils'
@@ -19,6 +19,8 @@ export interface CommandBarProps {
   projector: boolean
   onToggleProjector: () => void
   onLock: () => void
+  /** Read-only assistant view: lifecycle/lock buttons replaced by a chip. */
+  spectator?: boolean
 }
 
 type PendingAction = 'start' | 'closeRound' | 'nextRound' | 'endGame' | null
@@ -39,6 +41,7 @@ export default function CommandBar({
   projector,
   onToggleProjector,
   onLock,
+  spectator = false,
 }: CommandBarProps) {
   const t = useStrings(adminStrings)
   const { creds, notify, refresh } = useAdminCtx()
@@ -187,16 +190,23 @@ export default function CommandBar({
               <Projector className="h-4 w-4" aria-hidden />
               <span className="hidden md:inline">{t.command.projector}</span>
             </button>
-            <button
-              type="button"
-              onClick={onLock}
-              title={t.command.lockTitle}
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-hairline bg-paper px-3.5 text-sm font-extrabold text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
-            >
-              <Lock className="h-4 w-4" aria-hidden />
-              <span className="hidden md:inline">{t.command.lock}</span>
-            </button>
-            {room.status === 'ended' ? (
+            {spectator ? (
+              <span className="inline-flex h-11 items-center gap-2 rounded-full bg-gold-soft px-4 text-sm font-extrabold text-gold-ink ring-1 ring-gold">
+                <Eye className="h-4 w-4" aria-hidden />
+                {t.command.spectatorChip}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={onLock}
+                title={t.command.lockTitle}
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-hairline bg-paper px-3.5 text-sm font-extrabold text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
+              >
+                <Lock className="h-4 w-4" aria-hidden />
+                <span className="hidden md:inline">{t.command.lock}</span>
+              </button>
+            )}
+            {!spectator && (room.status === 'ended' ? (
               <Link
                 to="/endgame"
                 className="inline-flex h-14 items-center gap-2 rounded-xl bg-ink px-6 text-lg font-extrabold text-paper shadow-card transition-colors hover:bg-ink/90"
@@ -240,7 +250,7 @@ export default function CommandBar({
                   )}
                 </div>
               </>
-            )}
+            ))}
           </div>
         </div>
       </motion.section>

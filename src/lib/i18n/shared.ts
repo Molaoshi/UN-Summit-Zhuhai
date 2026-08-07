@@ -320,6 +320,17 @@ export function activityMessage(
       )
     }
 
+    case 'assistant_set':
+      return params.assistant
+        ? fill(
+            lang === 'zh' ? '{player} 现在是助教。' : '{player} is now an admin assistant.',
+            { player: str(params.player) },
+          )
+        : fill(
+            lang === 'zh' ? '{player} 已不再是助教。' : '{player} is no longer an admin assistant.',
+            { player: str(params.player) },
+          )
+
     case 'adjust_score':
       return fill(
         lang === 'zh'

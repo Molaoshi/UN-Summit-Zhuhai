@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import { Hourglass, Info, Settings } from 'lucide-react'
+import { Eye, Hourglass, Info, Settings } from 'lucide-react'
 import { COUNTRY_BY_NAME } from '@contracts/game-data'
 import SummitHeader from '@/components/SummitHeader'
 import BottomSheet from '@/components/BottomSheet'
@@ -72,15 +72,24 @@ export default function Lobby() {
     }
   }, [stateQ.error, navigate])
 
+  // Am I an admin assistant? (unseated pool entries carry the flag)
+  const amAssistant = useMemo(
+    () =>
+      !isAdmin &&
+      !!session?.name &&
+      (data?.unseated.some((p) => p.name === session.name && p.isAssistant) ?? false),
+    [data, isAdmin, session],
+  )
+
   // Room moved on → route to the right surface.
   useEffect(() => {
     if (!data) return
     if (data.status === 'playing') {
-      navigate(isAdmin ? '/admin' : '/play', { replace: true })
+      navigate(isAdmin ? '/admin' : amAssistant ? '/spectate' : '/play', { replace: true })
     } else if (data.status === 'ended') {
       navigate('/endgame', { replace: true })
     }
-  }, [data, isAdmin, navigate])
+  }, [data, isAdmin, amAssistant, navigate])
 
   // Seat-change pulses (compare consecutive polls).
   const prevSeats = useRef<Map<string, string | null> | null>(null)
@@ -124,8 +133,8 @@ export default function Lobby() {
     if (!data) return []
     const seated = data.seats
       .filter((s) => s.playerId !== null)
-      .map((s) => ({ id: s.playerId as number, name: s.claimedBy as string, country: s.country as string | null }))
-    const unseated = data.unseated.map((p) => ({ id: p.id, name: p.name, country: null as string | null }))
+      .map((s) => ({ id: s.playerId as number, name: s.claimedBy as string, country: s.country as string | null, isAssistant: false }))
+    const unseated = data.unseated.map((p) => ({ id: p.id, name: p.name, country: null as string | null, isAssistant: p.isAssistant }))
     return [...unseated, ...seated].sort((a, b) => a.id - b.id)
   }, [data])
   const assignableCountries = useMemo(
@@ -317,8 +326,38 @@ export default function Lobby() {
                 )
               })}
 
+              {/* Assistant card (promoted students watch read-only) */}
+              {!isAdmin && amAssistant && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: 0.5 }}
+                  className="rounded-2xl border-2 border-gold bg-card p-5 md:p-6"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold-soft">
+                      <Eye className="h-5 w-5 text-gold-ink" aria-hidden />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-display text-2xl font-semibold text-ink">
+                        {s.assistant.title}
+                      </h2>
+                      <p className="mt-1 text-lg leading-7 text-ink-soft">{s.assistant.body}</p>
+                      <button
+                        type="button"
+                        onClick={() => navigate('/spectate')}
+                        className="mt-4 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ink px-5 text-base font-extrabold text-paper shadow-card transition-colors hover:bg-ink/90"
+                      >
+                        <Eye className="h-5 w-5" aria-hidden />
+                        {s.assistant.open}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Waiting card (students with no seat yet) */}
-              {!isAdmin && !mySeat && (
+              {!isAdmin && !amAssistant && !mySeat && (
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -368,7 +407,7 @@ export default function Lobby() {
               )}
 
               {/* Seating note (students) */}
-              {!isAdmin && (
+              {!isAdmin && !amAssistant && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

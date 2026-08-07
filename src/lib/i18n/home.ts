@@ -72,6 +72,7 @@ const homeStrings = {
       backDashboard: 'Back to my dashboard →',
       backLobby: 'Back to the lobby →',
       backAdmin: 'Back to the admin dashboard →',
+      backSpectator: 'Back to the spectator dashboard →',
       startOver: 'Not you? Start over',
       endedTitle: 'Your last game has ended',
       endedBody:
@@ -140,6 +141,7 @@ const homeStrings = {
       backDashboard: '返回我的面板 →',
       backLobby: '返回大厅 →',
       backAdmin: '返回管理面板 →',
+      backSpectator: '返回观察面板 →',
       startOver: '不是你？重新开始',
       endedTitle: '你的上一局游戏已结束',
       endedBody: '这局峰会已经落幕。你可以回顾最终结果，或者在下方开始新的一局。',

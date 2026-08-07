@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { UserX, Users } from 'lucide-react'
+import { Check, UserX, Users } from 'lucide-react'
 import { trpc } from '@/providers/trpc'
 import ConfirmDialog from '@/components/admin/ConfirmDialog'
 import { useLang, useStrings } from '@/lib/i18n'
@@ -13,6 +13,8 @@ export interface AssignablePlayer {
   name: string
   /** Country this player currently holds, or null when unassigned. */
   country: string | null
+  /** Read-only admin assistant (holds no country seat). */
+  isAssistant?: boolean
 }
 
 export interface AssignableCountry {
@@ -25,7 +27,7 @@ export interface AssignableCountry {
 export interface AssignPlayersProps {
   code: string
   pin: string
-  /** Every joined (non-admin) player, seated or waiting. */
+  /** Every joined (non-admin) player, seated, waiting, or assistant. */
   players: AssignablePlayer[]
   /** The room's ACTIVE countries with their current holders. */
   countries: AssignableCountry[]
@@ -34,9 +36,15 @@ export interface AssignPlayersProps {
   onChanged: () => void
 }
 
+/** Select value for the special "Admin Assistant" role option. */
+const ASSISTANT_VALUE = '__assistant__'
+const MAX_ASSISTANTS = 4
+
 /**
- * Teacher assignment panel: seat every joined player at a country. Works in
- * the lobby AND mid-game (late joiners) — admin.assignSeat accepts both.
+ * Teacher assignment panel: seat every joined player at a country, or promote
+ * them to a read-only admin assistant (max 4). Works in the lobby AND
+ * mid-game (late joiners). The select only stages a choice — nothing changes
+ * until the explicit Assign button is pressed.
  * Reused by the Admin dashboard and the Lobby teacher controls.
  */
 export default function AssignPlayers({
@@ -53,33 +61,83 @@ export default function AssignPlayers({
   const [releaseAllOpen, setReleaseAllOpen] = useState(false)
   const [releasingAll, setReleasingAll] = useState(false)
   const [busyPlayerId, setBusyPlayerId] = useState<number | null>(null)
+  /** Staged (not yet assigned) select value per player id. */
+  const [staged, setStaged] = useState<Record<number, string>>({})
 
   const locked = pin.length === 0
   const seatedCount = players.filter((p) => p.country !== null).length
+  const assistantCount = players.filter((p) => p.isAssistant).length
   const holderByCountry = new Map(countries.map((c) => [c.country, c.playerName]))
 
   const assign = trpc.admin.assignSeat.useMutation()
   const release = trpc.admin.releaseSeat.useMutation()
+  const setAssistant = trpc.admin.setAssistant.useMutation()
+
+  /** The player's current server-side value in the select. */
+  const currentValue = (p: AssignablePlayer) => (p.isAssistant ? ASSISTANT_VALUE : (p.country ?? ''))
+  const stagedValue = (p: AssignablePlayer) => staged[p.id] ?? currentValue(p)
+  const clearStaged = (playerId: number) =>
+    setStaged((prev) => {
+      if (!(playerId in prev)) return prev
+      const next = { ...prev }
+      delete next[playerId]
+      return next
+    })
+
+  const handlePromote = async (player: AssignablePlayer) => {
+    setBusyPlayerId(player.id)
+    try {
+      const res = await setAssistant.mutateAsync({ code, pin, playerId: player.id, assistant: true })
+      if (res.releasedCountry) {
+        onToast(a.toastPromotedReleased(res.playerName, countryName(res.releasedCountry, lang)))
+      } else {
+        onToast(a.toastPromoted(res.playerName))
+      }
+      clearStaged(player.id)
+      onChanged()
+    } catch (e) {
+      const message = e instanceof Error ? e.message : ''
+      onToast(
+        message.includes('maximum of 4')
+          ? a.toastAssistantMax
+          : message || a.toastAssistantFailed,
+      )
+    } finally {
+      setBusyPlayerId(null)
+    }
+  }
 
   const handleAssign = async (player: AssignablePlayer, country: string) => {
-    if (!country || locked || assign.isPending) return
     setBusyPlayerId(player.id)
     try {
       const res = await assign.mutateAsync({ code, pin, playerId: player.id, country })
       const label = countryName(res.country, lang)
-      if (res.evictedPlayer) {
+      if (player.isAssistant) {
+        // Seating an assistant demotes them back to a regular player.
+        onToast(a.toastDemotedAssigned(res.playerName, label))
+      } else if (res.evictedPlayer) {
         onToast(a.toastAssignedEvicted(res.playerName, label, res.evictedPlayer.name))
       } else if (!res.changed) {
         onToast(a.toastAlready(res.playerName, label))
       } else {
         onToast(a.toastAssigned(res.playerName, label))
       }
+      clearStaged(player.id)
       onChanged()
     } catch (e) {
       onToast(e instanceof Error ? e.message : a.toastAssignFailed)
     } finally {
       setBusyPlayerId(null)
     }
+  }
+
+  /** Explicit Assign button: dispatch to the assistant role or a country. */
+  const handleConfirm = (player: AssignablePlayer) => {
+    const target = stagedValue(player)
+    if (locked || busyPlayerId !== null) return
+    if (target === currentValue(player) || (target === '' && !player.country)) return
+    if (target === ASSISTANT_VALUE) void handlePromote(player)
+    else if (target) void handleAssign(player, target)
   }
 
   const handleRelease = async (player: AssignablePlayer) => {
@@ -123,6 +181,7 @@ export default function AssignPlayers({
             <h2 className="font-display text-2xl font-semibold text-ink">{a.title}</h2>
             <p className="text-sm font-semibold text-ink-soft">
               {a.seatedCount(seatedCount, players.length)}
+              <span className="ml-2 text-gold-ink">{a.assistantsCount(assistantCount)}</span>
             </p>
           </div>
           <button
@@ -144,6 +203,10 @@ export default function AssignPlayers({
           <ul className="mt-4 divide-y divide-hairline">
             {players.map((p) => {
               const busy = busyPlayerId === p.id
+              const current = currentValue(p)
+              const value = stagedValue(p)
+              const dirty = value !== current && value !== ''
+              const assistantFull = assistantCount >= MAX_ASSISTANTS && !p.isAssistant
               return (
                 <motion.li
                   key={p.id}
@@ -154,7 +217,11 @@ export default function AssignPlayers({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-base font-bold text-ink">{p.name}</span>
-                    {p.country ? (
+                    {p.isAssistant ? (
+                      <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-gold-soft px-2.5 py-0.5 text-xs font-extrabold text-gold-ink ring-1 ring-gold">
+                        {a.assistantBadge}
+                      </span>
+                    ) : p.country ? (
                       <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-gold-soft px-2.5 py-0.5 text-xs font-extrabold text-gold-ink">
                         <span aria-hidden>{countries.find((c) => c.country === p.country)?.flag}</span>
                         {countryName(p.country, lang)}
@@ -166,14 +233,20 @@ export default function AssignPlayers({
                     )}
                   </span>
                   <select
-                    value={p.country ?? ''}
+                    value={value}
                     disabled={locked || busy}
-                    onChange={(e) => void handleAssign(p, e.target.value)}
+                    onChange={(e) =>
+                      setStaged((prev) => ({ ...prev, [p.id]: e.target.value }))
+                    }
                     aria-label={a.selectAria(p.name)}
                     className={cn(
                       'min-h-11 max-w-[190px] rounded-xl border border-hairline bg-paper px-2.5 text-sm font-bold text-ink outline-none transition-colors focus:border-gold disabled:opacity-60',
                     )}
                   >
+                    <option value={ASSISTANT_VALUE} disabled={assistantFull}>
+                      {a.assistantOption}
+                      {assistantFull ? ` ${a.assistantMaxSuffix}` : ''}
+                    </option>
                     <option value="" disabled>
                       {a.placeholder}
                     </option>
@@ -188,6 +261,16 @@ export default function AssignPlayers({
                       )
                     })}
                   </select>
+                  <button
+                    type="button"
+                    onClick={() => handleConfirm(p)}
+                    disabled={locked || busy || !dirty}
+                    aria-label={a.assignAria(p.name)}
+                    className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl bg-ink px-3.5 text-sm font-extrabold text-paper shadow-card transition-colors hover:bg-ink/90 disabled:opacity-40"
+                  >
+                    <Check className="h-4 w-4" aria-hidden />
+                    {a.assignButton}
+                  </button>
                   {p.country && (
                     <button
                       type="button"

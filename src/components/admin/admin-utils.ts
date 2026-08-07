@@ -66,6 +66,38 @@ export function clearAdminCreds() {
   localStorage.removeItem(LEGACY_PIN_KEY)
 }
 
+// ── Per-browser-session PIN gate unlock ────────────────────────────────────
+// The PIN gate appears on every NEW browser session: localStorage creds only
+// prefill the room code. A successful unlock is remembered in sessionStorage
+// (per room code), so refreshes within the same tab stay unlocked but a fresh
+// tab/window always asks for the PIN again.
+
+const UNLOCK_PREFIX = 'summit:adminUnlocked:'
+
+export function isAdminUnlocked(code: string): boolean {
+  try {
+    return sessionStorage.getItem(UNLOCK_PREFIX + code) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function markAdminUnlocked(code: string) {
+  try {
+    sessionStorage.setItem(UNLOCK_PREFIX + code, '1')
+  } catch {
+    /* private mode — the gate simply re-appears on refresh */
+  }
+}
+
+export function clearAdminUnlock(code: string) {
+  try {
+    sessionStorage.removeItem(UNLOCK_PREFIX + code)
+  } catch {
+    /* ignore */
+  }
+}
+
 // ── Page context (creds, projector mode, toast, refresh) ───────────────────
 
 export interface AdminCtxValue {

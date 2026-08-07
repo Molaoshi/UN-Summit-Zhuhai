@@ -139,10 +139,12 @@ export interface MissionMatrixProps {
   countries: AdminCountry[]
   projector: boolean
   started: boolean
+  /** Spectator mode: cells are display-only, no override sheet. */
+  readOnly?: boolean
 }
 
 /** 15×3 mission matrix with auto status + manual override per cell. */
-export default function MissionMatrix({ countries, projector, started }: MissionMatrixProps) {
+export default function MissionMatrix({ countries, projector, started, readOnly = false }: MissionMatrixProps) {
   const { lang } = useLang()
   const t = useStrings(adminStrings).missions
   const [target, setTarget] = useState<CellTarget | null>(null)
@@ -213,10 +215,16 @@ export default function MissionMatrix({ countries, projector, started }: Mission
                     <td key={slot} className="px-2 py-1.5">
                       <button
                         type="button"
-                        onClick={() => setTarget({ country: c, mission })}
-                        title={t.cellTitle(countryName(c.country, lang), t.slots[slot])}
+                        disabled={readOnly}
+                        onClick={() => {
+                          if (!readOnly) setTarget({ country: c, mission })
+                        }}
+                        title={readOnly ? undefined : t.cellTitle(countryName(c.country, lang), t.slots[slot])}
                         className={cn(
-                          'relative w-full rounded-xl border border-hairline bg-paper px-3 py-2 text-left transition-colors hover:border-gold hover:bg-gold-soft/40',
+                          'relative w-full rounded-xl border border-hairline bg-paper px-3 py-2 text-left transition-colors',
+                          readOnly
+                            ? 'cursor-default disabled:opacity-100'
+                            : 'hover:border-gold hover:bg-gold-soft/40',
                           mission.overridden && 'border-gold/60',
                         )}
                       >
@@ -261,8 +269,8 @@ export default function MissionMatrix({ countries, projector, started }: Mission
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-sm font-semibold text-ink-soft">{t.tapHint}</p>
-      <OverrideSheet target={target} onClose={() => setTarget(null)} />
+      {!readOnly && <p className="mt-3 text-sm font-semibold text-ink-soft">{t.tapHint}</p>}
+      {!readOnly && <OverrideSheet target={target} onClose={() => setTarget(null)} />}
     </section>
   )
 }

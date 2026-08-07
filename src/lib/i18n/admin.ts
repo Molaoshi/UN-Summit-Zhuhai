@@ -42,6 +42,7 @@ const en = {
       `${signed} deals signed · ${pending} offers pending`,
     projector: 'Projector',
     projectorTitle: 'Projector mode: enlarge all text',
+    spectatorChip: 'Spectator view · read only',
     lock: 'Lock',
     lockTitle: 'Lock admin (returns to the PIN gate)',
     startRound1: 'Start Round 1',
@@ -278,11 +279,24 @@ const en = {
     releaseAria: (player: string) => `Remove ${player} from their seat`,
     empty: 'No students have joined yet — share the room code!',
     rosterSummary: (n: number) => `${n} countries in this summit`,
+    assignButton: 'Assign',
+    assignAria: (player: string) => `Assign ${player}`,
+    assistantOption: '👁 Admin Assistant',
+    assistantBadge: '👁 Admin Assistant',
+    assistantMaxSuffix: '(max 4)',
+    assistantsCount: (n: number) => `Assistants: ${n}/4`,
     toastAssigned: (player: string, country: string) => `${player} → ${country} ✓`,
     toastAssignedEvicted: (player: string, country: string, evicted: string) =>
       `${player} → ${country} ✓ (${evicted} was removed)`,
     toastAlready: (player: string, country: string) => `${player} is already seated as ${country}.`,
     toastAssignFailed: 'Could not assign that seat.',
+    toastPromoted: (player: string) => `${player} is now an admin assistant 👁`,
+    toastPromotedReleased: (player: string, country: string) =>
+      `${player} is now an admin assistant 👁 (${country} seat released)`,
+    toastDemotedAssigned: (player: string, country: string) =>
+      `${player} is no longer an assistant — seated as ${country} ✓`,
+    toastAssistantMax: 'This room already has 4 admin assistants — demote one first.',
+    toastAssistantFailed: 'Could not update the assistant role.',
     toastReleased: (player: string) => `${player} removed from their seat ✓`,
     toastReleaseFailed: 'Could not remove the player from the seat.',
   },
@@ -298,6 +312,12 @@ const en = {
     body: 'The final scores were revealed. Start a new game to play again with a fresh room.',
     viewResults: 'View final results',
     newGame: 'Start a new game',
+  },
+  spectator: {
+    forbiddenTitle: 'You are not an admin assistant',
+    forbiddenBody:
+      'Only students the teacher promoted to admin assistant can open this read-only dashboard.',
+    backHome: 'Back to home',
   },
 }
 
@@ -341,6 +361,7 @@ const zh: AdminStrings = {
     dealsSummary: (signed, pending) => `已签 ${signed} 份协议 · ${pending} 份报价待定`,
     projector: '投影模式',
     projectorTitle: '投影模式：放大所有文字',
+    spectatorChip: '观察模式 · 只读',
     lock: '锁定',
     lockTitle: '锁定管理台（返回 PIN 登录页）',
     startRound1: '开始第 1 回合',
@@ -562,11 +583,22 @@ const zh: AdminStrings = {
     releaseAria: (player) => `把 ${player} 移出座位`,
     empty: '还没有学生加入——把房间代码分享给他们吧！',
     rosterSummary: (n) => `本次峰会共有 ${n} 个国家`,
+    assignButton: '分配',
+    assignAria: (player) => `分配 ${player}`,
+    assistantOption: '👁 助教（观察）',
+    assistantBadge: '👁 助教（观察员）',
+    assistantMaxSuffix: '（最多 4 人）',
+    assistantsCount: (n) => `助教：${n}/4`,
     toastAssigned: (player, country) => `${player} → ${country} ✓`,
     toastAssignedEvicted: (player, country, evicted) =>
       `${player} → ${country} ✓（${evicted} 已被移出）`,
     toastAlready: (player, country) => `${player} 已经代表${country}。`,
     toastAssignFailed: '无法分配该席位。',
+    toastPromoted: (player) => `${player} 已成为助教 👁`,
+    toastPromotedReleased: (player, country) => `${player} 已成为助教 👁（已释放${country}的席位）`,
+    toastDemotedAssigned: (player, country) => `${player} 已不再是助教——已入座${country} ✓`,
+    toastAssistantMax: '该房间已有 4 名助教——请先取消一名。',
+    toastAssistantFailed: '无法更新助教身份。',
     toastReleased: (player) => `已将 ${player} 移出座位 ✓`,
     toastReleaseFailed: '无法将该学生移出座位。',
   },
@@ -582,6 +614,11 @@ const zh: AdminStrings = {
     body: '最终得分已经揭晓。开始新游戏可在全新的房间里再玩一次。',
     viewResults: '查看最终结果',
     newGame: '开始新游戏',
+  },
+  spectator: {
+    forbiddenTitle: '你不是助教',
+    forbiddenBody: '只有被老师设置为助教的学生才能打开这个只读观察面板。',
+    backHome: '返回首页',
   },
 }
 

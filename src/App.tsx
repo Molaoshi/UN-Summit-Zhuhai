@@ -14,6 +14,7 @@ export default function App() {
         <Route path="/lobby" element={<Lobby />} />
         <Route path="/play" element={<Play />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/spectate" element={<Admin spectator />} />
         <Route path="/endgame" element={<Endgame />} />
       </Routes>
     </TRPCProvider>

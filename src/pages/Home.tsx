@@ -25,7 +25,7 @@ import SummitHeader from '@/components/SummitHeader'
 import Footer from '@/components/Footer'
 import { trpc } from '@/providers/trpc'
 import { loadSession, saveSession, clearSession } from '@/lib/session'
-import { clearAdminCreds, saveAdminCreds } from '@/components/admin/admin-utils'
+import { clearAdminCreds, markAdminUnlocked, saveAdminCreds } from '@/components/admin/admin-utils'
 import { useLang, useStrings } from '@/lib/i18n'
 import { countryName } from '@/lib/i18n/shared'
 import homeStrings from '@/lib/i18n/home'
@@ -271,8 +271,12 @@ function CreateCard() {
     const res = await create.mutateAsync({ teacherName: teacherName.trim() || 'Teacher' })
     const room: CreatedRoom = { token: res.token, roomCode: res.roomCode, adminPin: res.adminPin }
     saveSession({ token: room.token, roomCode: room.roomCode, role: 'teacher', name: teacherName.trim() || 'Teacher' })
-    // Save the new admin creds so /admin?code= opens without re-typing the PIN.
-    if (room.adminPin) saveAdminCreds({ code: room.roomCode, pin: room.adminPin })
+    // Save the new admin creds (room-code prefill + lobby controls) and count
+    // this browser session as unlocked — the teacher just saw the PIN.
+    if (room.adminPin) {
+      saveAdminCreds({ code: room.roomCode, pin: room.adminPin })
+      markAdminUnlocked(room.roomCode)
+    }
     setCreated(room)
   }
 
@@ -465,6 +469,8 @@ function ResumeBanner() {
   }
 
   const isTeacher = session.role === 'teacher'
+  // Admin assistants always resume to the read-only spectator dashboard.
+  const isAssistant = !isTeacher && resumeQ.data?.player.isAssistant === true
   const welcome = isTeacher
     ? s.resume.welcomeTeacher(session.roomCode)
     : session.country
@@ -476,16 +482,20 @@ function ResumeBanner() {
     ? status === 'playing'
       ? '/admin'
       : '/lobby'
-    : status === 'playing' && session.country
-      ? '/play'
-      : '/lobby'
+    : isAssistant
+      ? '/spectate'
+      : status === 'playing' && session.country
+        ? '/play'
+        : '/lobby'
   const cta = isTeacher
     ? status === 'playing'
       ? s.resume.backAdmin
       : s.resume.backLobby
-    : session.country && status === 'playing'
-      ? s.resume.backDashboard
-      : s.resume.backLobby
+    : isAssistant
+      ? s.resume.backSpectator
+      : session.country && status === 'playing'
+        ? s.resume.backDashboard
+        : s.resume.backLobby
 
   return (
     <motion.div

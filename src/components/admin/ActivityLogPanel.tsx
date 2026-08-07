@@ -42,6 +42,7 @@ function iconFor(entry: AdminLogEntry): LucideIcon {
     case 'override_mission':
       return PenLine
     case 'espionage_peek':
+    case 'assistant_set':
       return Eye
     case 'bloc_chosen':
       return Users
@@ -57,7 +58,7 @@ function iconFor(entry: AdminLogEntry): LucideIcon {
 }
 
 /** Teacher's own manual actions — highlighted gold in the feed. */
-const MANUAL_KINDS = new Set(['adjust_score', 'override_mission', 'seat_released', 'countries_updated'])
+const MANUAL_KINDS = new Set(['adjust_score', 'override_mission', 'seat_released', 'countries_updated', 'assistant_set'])
 
 const PAGE = 100
 

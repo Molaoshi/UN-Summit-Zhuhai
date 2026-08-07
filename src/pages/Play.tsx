@@ -96,7 +96,9 @@ export default function Play() {
 
   useEffect(() => {
     if (!data) return
-    if (data.room.status === 'ended') navigate('/endgame')
+    // Admin assistants watch the read-only spectator dashboard instead.
+    if (data.me.isAssistant) navigate('/spectate')
+    else if (data.room.status === 'ended') navigate('/endgame')
     else if (data.room.status === 'lobby') navigate('/lobby')
   }, [data, navigate])
 

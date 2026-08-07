@@ -144,6 +144,21 @@ describe('activityMessage', () => {
     ).toBe('Ana was assigned to France.')
   })
 
+  it('renders assistant_set keyed off params.assistant in both languages', () => {
+    expect(activityMessage('assistant_set', { player: 'Ana', assistant: true }, 'en')).toBe(
+      'Ana is now an admin assistant.',
+    )
+    expect(activityMessage('assistant_set', { player: 'Ana', assistant: true }, 'zh')).toBe(
+      'Ana 现在是助教。',
+    )
+    expect(activityMessage('assistant_set', { player: 'Bo', assistant: false }, 'en')).toBe(
+      'Bo is no longer an admin assistant.',
+    )
+    expect(activityMessage('assistant_set', { player: 'Bo', assistant: false }, 'zh')).toBe(
+      'Bo 已不再是助教。',
+    )
+  })
+
   it('returns null for unknown kinds or missing params (caller falls back to message)', () => {
     expect(activityMessage('totally_unknown', { a: 1 }, 'en')).toBeNull()
     expect(activityMessage('deal_accepted', null, 'en')).toBeNull()
