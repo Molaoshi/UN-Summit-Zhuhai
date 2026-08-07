@@ -1,48 +1,46 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { motion } from 'framer-motion'
-import confetti from 'canvas-confetti'
-import { Info, Settings } from 'lucide-react'
+import { Hourglass, Info, Settings } from 'lucide-react'
 import { COUNTRY_BY_NAME } from '@contracts/game-data'
 import SummitHeader from '@/components/SummitHeader'
 import BottomSheet from '@/components/BottomSheet'
 import Toast from '@/components/Toast'
 import AdminPanel from '@/components/lobby/AdminPanel'
-import ClaimSheet from '@/components/lobby/ClaimSheet'
 import CountryPicker from '@/components/lobby/CountryPicker'
 import RoomBanner from '@/components/lobby/RoomBanner'
 import SeatCard from '@/components/lobby/SeatCard'
 import type { SeatInfo } from '@/components/lobby/SeatCard'
 import { STARTING_BLOC_META } from '@/components/lobby/bloc-meta'
+import AssignPlayers from '@/components/admin/AssignPlayers'
 import { clearAdminCreds, loadAdminCreds, saveAdminCreds } from '@/components/admin/admin-utils'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useLang, useStrings } from '@/lib/i18n'
 import { blocName, countryName, sharedStrings } from '@/lib/i18n/shared'
 import lobbyStrings from '@/lib/i18n/lobby'
-import { clearSession, loadSession, saveSession } from '@/lib/session'
+import { clearSession, loadSession } from '@/lib/session'
 import { BLOCS } from '@/lib/game-ui'
 import { trpc } from '@/providers/trpc'
 
 const PIN_KEY = 'summit:adminPin'
-
-/** Pull the seat-taker's name out of a CONFLICT error message. */
-function takerFromMessage(message: string): string | null {
-  const m = message.match(/taken by (.+?)\./)
-  return m?.[1] ?? null
-}
 
 export default function Lobby() {
   const navigate = useNavigate()
   const { lang } = useLang()
   const s = useStrings(lobbyStrings)
   const shared = useStrings(sharedStrings)
-  const [session, setSession] = useState(loadSession)
+  const [session] = useState(loadSession)
   const isDesktop = useMediaQuery('(min-width: 1024px)')
-  const isAdmin = session?.role === 'teacher'
+  // Teachers get the controls either via their session role OR via stored
+  // admin credentials (a teacher who signed in through the PIN gate has no
+  // session role but still owns this room).
+  const [hasAdminCreds, setHasAdminCreds] = useState(() => {
+    const creds = loadAdminCreds()
+    return !!creds && creds.code === session?.roomCode && creds.pin.length > 0
+  })
+  const isAdmin = session?.role === 'teacher' || hasAdminCreds
 
   const [toast, setToast] = useState<string | null>(null)
-  const [claimCountry, setClaimCountry] = useState<string | null>(null)
-  const [conflictName, setConflictName] = useState<string | null>(null)
   const [pin, setPin] = useState(
     () => localStorage.getItem(PIN_KEY) ?? loadAdminCreds()?.pin ?? '',
   )
@@ -121,7 +119,26 @@ export default function Lobby() {
     [seats],
   )
 
-  const claim = trpc.lobby.claim.useMutation()
+  // Teacher assignment panel data: every joined player (seated or waiting).
+  const assignablePlayers = useMemo(() => {
+    if (!data) return []
+    const seated = data.seats
+      .filter((s) => s.playerId !== null)
+      .map((s) => ({ id: s.playerId as number, name: s.claimedBy as string, country: s.country as string | null }))
+    const unseated = data.unseated.map((p) => ({ id: p.id, name: p.name, country: null as string | null }))
+    return [...unseated, ...seated].sort((a, b) => a.id - b.id)
+  }, [data])
+  const assignableCountries = useMemo(
+    () =>
+      seats.map((s) => ({
+        country: s.country,
+        flag: s.flag,
+        playerName: s.claimedBy,
+        playerId: s.playerId,
+      })),
+    [seats],
+  )
+
   const release = trpc.admin.releaseSeat.useMutation()
   const startGame = trpc.admin.startGame.useMutation()
 
@@ -130,53 +147,6 @@ export default function Lobby() {
     void navigator.clipboard?.writeText(session.roomCode).catch(() => {})
     setToast(s.toast.codeCopied)
   }, [session, s])
-
-  const openClaim = (country: string) => {
-    setConflictName(null)
-    setClaimCountry(country)
-  }
-
-  // If the open claim sheet's seat is grabbed by someone else, swap to the conflict state.
-  useEffect(() => {
-    if (!claimCountry) return
-    const seat = seats.find((s) => s.country === claimCountry)
-    if (seat?.claimedBy && seat.claimedBy !== session?.name) {
-      setConflictName(seat.claimedBy)
-    }
-  }, [seats, claimCountry, session])
-
-  const confirmClaim = async () => {
-    if (!session || !claimCountry || claim.isPending) return
-    const country = COUNTRY_BY_NAME[claimCountry]
-    try {
-      await claim.mutateAsync({ token: session.token, country: claimCountry })
-      saveSession({ ...session, country: claimCountry, flag: country?.flag })
-      setSession(loadSession())
-      setClaimCountry(null)
-      setToast(s.toast.welcome(countryName(claimCountry, lang)))
-      if (country) {
-        const blocKey = STARTING_BLOC_META.find((b) => b.name === country.startingBloc)?.key ?? 'nuclear'
-        confetti({
-          particleCount: 16,
-          spread: 60,
-          startVelocity: 24,
-          gravity: 0.8,
-          origin: { y: 0.7 },
-          colors: [BLOCS[blocKey].color, '#C49A33', '#F6F1E7'],
-        })
-      }
-      void stateQ.refetch()
-    } catch (e) {
-      const message = e instanceof Error ? e.message : s.toast.claimFailed
-      if (message.includes('already taken')) {
-        setConflictName(takerFromMessage(message) ?? s.claim.someone)
-        void stateQ.refetch()
-      } else {
-        setClaimCountry(null)
-        setToast(message)
-      }
-    }
-  }
 
   const handleRelease = async (country: string) => {
     if (!session || !pin) return
@@ -188,6 +158,7 @@ export default function Lobby() {
       const message = e instanceof Error ? e.message : s.toast.releaseFailed
       if (message.toLowerCase().includes('pin')) {
         setPin('')
+        setHasAdminCreds(false)
         localStorage.removeItem(PIN_KEY)
         clearAdminCreds()
       }
@@ -205,6 +176,7 @@ export default function Lobby() {
       const message = e instanceof Error ? e.message : s.toast.startFailed
       if (message.toLowerCase().includes('pin')) {
         setPin('')
+        setHasAdminCreds(false)
         localStorage.removeItem(PIN_KEY)
         clearAdminCreds()
       }
@@ -223,6 +195,7 @@ export default function Lobby() {
         pin={pin}
         onPinChange={(p) => {
           setPin(p)
+          setHasAdminCreds(p.length > 0)
           localStorage.setItem(PIN_KEY, p)
           // Keep the Admin dashboard's JSON credential store in sync so the
           // teacher is never locked out after pressing Start.
@@ -245,6 +218,14 @@ export default function Lobby() {
         canEdit={data?.status === 'lobby'}
         onToast={setToast}
         onSaved={() => void stateQ.refetch()}
+      />
+      <AssignPlayers
+        code={session.roomCode}
+        pin={pin}
+        players={assignablePlayers}
+        countries={assignableCountries}
+        onToast={setToast}
+        onChanged={() => void stateQ.refetch()}
       />
     </>
   )
@@ -328,7 +309,6 @@ export default function Lobby() {
                             mine={mySeat?.country === seat.country}
                             pulse={pulsing.has(seat.country)}
                             staggerDelay={0.1 * bi + 0.05 * si}
-                            onTake={() => openClaim(seat.country)}
                           />
                         )
                       })}
@@ -336,6 +316,56 @@ export default function Lobby() {
                   </motion.section>
                 )
               })}
+
+              {/* Waiting card (students with no seat yet) */}
+              {!isAdmin && !mySeat && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.35, delay: 0.5 }}
+                  className="rounded-2xl border-2 border-dashed border-gold bg-card p-5 md:p-6"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold-soft">
+                      <Hourglass className="h-5 w-5 text-gold-ink" aria-hidden />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="font-display text-2xl font-semibold text-ink">
+                        {s.waiting.title}
+                      </h2>
+                      <p className="mt-1 text-lg leading-7 text-ink-soft">{s.waiting.body}</p>
+                      {session.name && (
+                        <p className="mt-2 inline-flex rounded-full bg-paper-deep px-3 py-1 text-sm font-bold text-ink">
+                          {s.waiting.joinedAs(session.name)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-4 border-t border-hairline pt-3">
+                    <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
+                      {s.waiting.rosterTitle(claimedCount, seats.length)}
+                    </p>
+                    {claimedSeats.length === 0 ? (
+                      <p className="mt-2 text-sm font-semibold text-ink-faint">
+                        {s.waiting.rosterEmpty}
+                      </p>
+                    ) : (
+                      <ul className="mt-2 flex flex-wrap gap-2">
+                        {claimedSeats.map((seat) => (
+                          <li
+                            key={seat.country}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-paper px-3 py-1 text-sm font-bold text-ink"
+                          >
+                            <span aria-hidden>{seat.flag}</span>
+                            {countryName(seat.country, lang)}
+                            <span className="font-semibold text-ink-soft">{seat.player}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </motion.div>
+              )}
 
               {/* Seating note (students) */}
               {!isAdmin && (
@@ -385,16 +415,6 @@ export default function Lobby() {
           </BottomSheet>
         </>
       )}
-
-      <ClaimSheet
-        open={claimCountry !== null}
-        country={claimCountry ? (COUNTRY_BY_NAME[claimCountry] ?? null) : null}
-        conflictName={conflictName}
-        claiming={claim.isPending}
-        alreadySeated={!!mySeat && mySeat.country !== claimCountry}
-        onConfirm={confirmClaim}
-        onClose={() => setClaimCountry(null)}
-      />
 
       <Toast open={toast !== null} message={toast ?? ''} onClose={() => setToast(null)} />
     </div>

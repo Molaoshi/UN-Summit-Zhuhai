@@ -113,6 +113,37 @@ describe('activityMessage', () => {
     ).toBe('Teacher set the country roster (3 countries).')
   })
 
+  it('renders seat_assigned with optional move/eviction details', () => {
+    expect(
+      activityMessage('seat_assigned', { player: 'Ana', country: 'France' }, 'en'),
+    ).toBe('Ana was assigned to France.')
+    expect(
+      activityMessage('seat_assigned', { player: 'Ana', country: 'France' }, 'zh'),
+    ).toBe('Ana 被分配到法国。')
+    expect(
+      activityMessage(
+        'seat_assigned',
+        { player: 'Ana', country: 'France', previousCountry: 'Japan', evictedPlayer: 'Bo' },
+        'en',
+      ),
+    ).toBe('Ana was assigned to France. (moved from Japan) Bo was released.')
+    expect(
+      activityMessage(
+        'seat_assigned',
+        { player: 'Ana', country: 'France', previousCountry: 'Japan', evictedPlayer: 'Bo' },
+        'zh',
+      ),
+    ).toBe('Ana 被分配到法国。（从日本调离） Bo 被移出席位。')
+    // Re-assigning the same seat is a no-op line with no move clause.
+    expect(
+      activityMessage(
+        'seat_assigned',
+        { player: 'Ana', country: 'France', previousCountry: 'France' },
+        'en',
+      ),
+    ).toBe('Ana was assigned to France.')
+  })
+
   it('returns null for unknown kinds or missing params (caller falls back to message)', () => {
     expect(activityMessage('totally_unknown', { a: 1 }, 'en')).toBeNull()
     expect(activityMessage('deal_accepted', null, 'en')).toBeNull()

@@ -11,8 +11,9 @@ import ScoresTable from '@/components/admin/ScoresTable'
 import MissionMatrix from '@/components/admin/MissionMatrix'
 import BlocMonitor from '@/components/admin/BlocMonitor'
 import DealsMonitor from '@/components/admin/DealsMonitor'
-import SeatManager from '@/components/admin/SeatManager'
+import AssignPlayers from '@/components/admin/AssignPlayers'
 import ActivityLogPanel from '@/components/admin/ActivityLogPanel'
+import CountryPicker from '@/components/lobby/CountryPicker'
 import {
   AdminCtx,
   PROJECTOR_KEY,
@@ -245,11 +246,42 @@ export default function Admin() {
               <MissionMatrix countries={state.countries} projector={projector} started={started} />
             </div>
             <div className="order-6 lg:order-none lg:col-span-5 lg:col-start-1 lg:row-start-4">
-              <SeatManager countries={state.countries} projector={projector} />
+              {started && (
+                <p className="mb-2 text-sm font-semibold text-ink-soft">
+                  {t.assign.rosterSummary(state.activeCountries.length)}
+                </p>
+              )}
+              <AssignPlayers
+                code={creds.code}
+                pin={creds.pin}
+                players={state.players
+                  .filter((p) => !p.isAdmin)
+                  .map((p) => ({ id: p.id, name: p.name, country: p.countryName }))}
+                countries={state.countries.map((c) => ({
+                  country: c.country,
+                  flag: c.flag,
+                  playerName: c.playerName,
+                  playerId: c.playerId,
+                }))}
+                onToast={setToast}
+                onChanged={() => void utils.game.adminState.invalidate()}
+              />
             </div>
             <div className="order-7 lg:order-none lg:col-span-7 lg:col-start-6 lg:row-start-4">
               <ActivityLogPanel log={state.activityLog} projector={projector} />
             </div>
+            {!started && (
+              <div className="order-8 lg:order-none lg:col-span-12 lg:row-start-5">
+                <CountryPicker
+                  code={creds.code}
+                  pin={creds.pin}
+                  activeCountries={state.activeCountries}
+                  canEdit
+                  onToast={setToast}
+                  onSaved={() => void utils.game.adminState.invalidate()}
+                />
+              </div>
+            )}
           </main>
         )}
 

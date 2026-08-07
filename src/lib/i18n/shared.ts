@@ -164,6 +164,30 @@ export function activityMessage(
         country: country(params.country),
       })
 
+    case 'seat_assigned': {
+      const target = str(params.country)
+      const previous = str(params.previousCountry)
+      const moved = previous !== '' && previous !== target
+      const evicted = str(params.evictedPlayer)
+      let message = fill(
+        lang === 'zh' ? '{player} 被分配到{country}。' : '{player} was assigned to {country}.',
+        { player: str(params.player), country: country(params.country) },
+      )
+      if (moved) {
+        message += fill(
+          lang === 'zh' ? '（从{previous}调离）' : ' (moved from {previous})',
+          { previous: country(previous) },
+        )
+      }
+      if (evicted) {
+        message += fill(
+          lang === 'zh' ? ' {evicted} 被移出席位。' : ' {evicted} was released.',
+          { evicted },
+        )
+      }
+      return message
+    }
+
     case 'seat_released':
       return fill(
         lang === 'zh'

@@ -13,6 +13,8 @@ export interface SeatInfo {
   flag: string
   startingBloc: string
   claimedBy: string | null
+  /** Player id holding this seat (teacher assignment uses ids). */
+  playerId: number | null
 }
 
 /** Asset key in game-data → DealType key in game-ui metadata. */
@@ -54,11 +56,10 @@ export interface SeatCardProps {
   /** Flash gold-soft when the seat state changed during polling. */
   pulse?: boolean
   staggerDelay?: number
-  onTake: () => void
 }
 
-/** One country seat in the lobby seat map. */
-export default function SeatCard({ seat, data, mine, pulse = false, staggerDelay = 0, onTake }: SeatCardProps) {
+/** One country seat in the lobby seat map (read-only: the teacher assigns seats). */
+export default function SeatCard({ seat, data, mine, pulse = false, staggerDelay = 0 }: SeatCardProps) {
   const { lang } = useLang()
   const s = useStrings(lobbyStrings)
   const taken = !mine && seat.claimedBy !== null
@@ -154,14 +155,9 @@ export default function SeatCard({ seat, data, mine, pulse = false, staggerDelay
             {s.seat.claimedBy(seat.claimedBy ?? '')}
           </p>
         ) : (
-          <motion.button
-            type="button"
-            whileTap={{ scale: 0.97 }}
-            onClick={onTake}
-            className="min-h-12 w-full rounded-xl border-2 border-ink text-base font-bold text-ink transition-colors hover:bg-paper-deep"
-          >
-            {s.seat.take}
-          </motion.button>
+          <p className="flex min-h-12 items-center justify-center rounded-xl border border-dashed border-hairline text-base font-semibold text-ink-faint">
+            {s.seat.awaiting}
+          </p>
         )}
       </div>
     </motion.div>
