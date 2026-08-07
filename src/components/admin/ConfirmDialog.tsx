@@ -2,6 +2,8 @@ import { motion } from 'framer-motion'
 import { AlertTriangle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import BottomSheet from '@/components/BottomSheet'
+import { useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
 import { cn } from '@/lib/utils'
 
 export interface ConfirmDialogProps {
@@ -32,6 +34,7 @@ export default function ConfirmDialog({
   loading,
   onConfirm,
 }: ConfirmDialogProps) {
+  const t = useStrings(adminStrings).command.confirm
   const danger = tone === 'danger'
   const HeaderIcon = Icon ?? (danger ? AlertTriangle : undefined)
   return (
@@ -70,7 +73,7 @@ export default function ConfirmDialog({
           onClick={onClose}
           className="rounded-xl border border-hairline bg-paper px-5 py-3 text-base font-bold text-ink transition-colors hover:bg-paper-deep"
         >
-          Cancel
+          {t.cancel}
         </button>
         <motion.button
           whileTap={{ scale: 0.97 }}
@@ -84,7 +87,7 @@ export default function ConfirmDialog({
               : 'bg-ink text-paper hover:bg-ink/90',
           )}
         >
-          {loading ? 'Working…' : confirmLabel}
+          {loading ? t.working : confirmLabel}
         </motion.button>
       </div>
     </BottomSheet>

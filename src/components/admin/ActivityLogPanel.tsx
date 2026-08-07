@@ -9,6 +9,7 @@ import {
   RefreshCw,
   ScrollText,
   Send,
+  TimerOff,
   Users,
   X,
 } from 'lucide-react'
@@ -16,31 +17,47 @@ import type { LucideIcon } from 'lucide-react'
 import EmptyState from '@/components/EmptyState'
 import { formatClock } from '@/components/admin/admin-utils'
 import type { AdminLogEntry } from '@/components/admin/admin-utils'
+import { useLang, useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
+import { activityMessage } from '@/lib/i18n/shared'
 import { cn } from '@/lib/utils'
 
 function iconFor(entry: AdminLogEntry): LucideIcon {
-  const msg = entry.message.toLowerCase()
   switch (entry.kind) {
-    case 'deal':
-      if (msg.includes('signed')) return Check
-      if (msg.includes('rejected') || msg.includes('cancelled')) return X
+    case 'deal_sent':
       return Send
-    case 'lobby':
-    case 'room':
-      return Flag
-    case 'game':
-      if (msg.includes('ended')) return Crown
+    case 'deal_accepted':
+      return Check
+    case 'deal_cancelled':
+      return X
+    case 'game_ended':
+      return Crown
+    case 'game_started':
+    case 'round_started':
+    case 'round_closed':
       return RefreshCw
-    case 'admin':
+    case 'offers_expired':
+      return TimerOff
+    case 'adjust_score':
+    case 'override_mission':
       return PenLine
-    case 'espionage':
+    case 'espionage_peek':
       return Eye
-    case 'bloc':
+    case 'bloc_chosen':
       return Users
+    case 'room_created':
+    case 'player_joined':
+    case 'seat_claimed':
+    case 'seat_released':
+    case 'countries_updated':
+      return Flag
     default:
       return ScrollText
   }
 }
+
+/** Teacher's own manual actions — highlighted gold in the feed. */
+const MANUAL_KINDS = new Set(['adjust_score', 'override_mission', 'seat_released', 'countries_updated'])
 
 const PAGE = 100
 
@@ -52,6 +69,8 @@ export interface ActivityLogPanelProps {
 
 /** Auditable reverse-chronological activity log; manual edits highlighted gold. */
 export default function ActivityLogPanel({ log, projector }: ActivityLogPanelProps) {
+  const { lang } = useLang()
+  const t = useStrings(adminStrings).activity
   const [shown, setShown] = useState(PAGE)
 
   const newestFirst = useMemo(() => [...log].reverse(), [log])
@@ -60,17 +79,15 @@ export default function ActivityLogPanel({ log, projector }: ActivityLogPanelPro
   return (
     <section className="rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-6">
       <div className="mb-4 flex flex-wrap items-baseline gap-x-4">
-        <h2 className="font-display text-2xl font-semibold text-ink">Activity log</h2>
-        <span className="text-sm font-semibold text-ink-soft">
-          Every action is recorded — gold rows are your own overrides.
-        </span>
+        <h2 className="font-display text-2xl font-semibold text-ink">{t.title}</h2>
+        <span className="text-sm font-semibold text-ink-soft">{t.subtitle}</span>
       </div>
 
       {visible.length === 0 ? (
         <EmptyState
           icon={ScrollText}
-          title="Nothing yet"
-          body="Claims, offers, signatures, round changes and score edits appear here."
+          title={t.emptyTitle}
+          body={t.emptyBody}
           className="py-8"
         />
       ) : (
@@ -79,7 +96,7 @@ export default function ActivityLogPanel({ log, projector }: ActivityLogPanelPro
             <AnimatePresence initial={false}>
               {visible.map((entry) => {
                 const Icon = iconFor(entry)
-                const manual = entry.kind === 'admin'
+                const manual = MANUAL_KINDS.has(entry.kind)
                 return (
                   <motion.li
                     key={entry.id}
@@ -107,7 +124,7 @@ export default function ActivityLogPanel({ log, projector }: ActivityLogPanelPro
                         manual && 'font-bold',
                       )}
                     >
-                      {entry.message}
+                      {activityMessage(entry.kind, entry.params, lang) ?? entry.message}
                     </span>
                     <span className="shrink-0 font-mono text-xs font-semibold text-ink-faint">
                       R{entry.round} · {formatClock(entry.createdAt)}
@@ -123,7 +140,7 @@ export default function ActivityLogPanel({ log, projector }: ActivityLogPanelPro
               onClick={() => setShown((n) => n + PAGE)}
               className="mt-3 w-full rounded-xl border border-hairline bg-paper px-4 py-2.5 text-sm font-extrabold text-ink transition-colors hover:bg-paper-deep"
             >
-              Show more ({newestFirst.length - shown} older)
+              {t.showMore(newestFirst.length - shown)}
             </button>
           )}
         </>

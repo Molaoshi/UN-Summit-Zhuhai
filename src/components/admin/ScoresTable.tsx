@@ -8,6 +8,9 @@ import ScoreAdjustSheet from '@/components/admin/ScoreAdjustSheet'
 import { blocKeyFor } from '@/components/admin/admin-utils'
 import type { AdminCountry } from '@/components/admin/admin-utils'
 import { MAX_DEAL_ACTIONS_PER_ROUND } from '@contracts/game-data'
+import { useLang, useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
+import { blocName, countryName } from '@/lib/i18n/shared'
 import { cn } from '@/lib/utils'
 import { Trophy } from 'lucide-react'
 
@@ -33,6 +36,8 @@ export interface ScoresTableProps {
 
 /** Live sortable scores table — the projector centerpiece. */
 export default function ScoresTable({ countries, customBlocs, projector, started }: ScoresTableProps) {
+  const { lang } = useLang()
+  const t = useStrings(adminStrings).scores
   const [sortKey, setSortKey] = useState<SortKey>('total')
   const [sortDir, setSortDir] = useState<1 | -1>(-1)
   const [editing, setEditing] = useState<AdminCountry | null>(null)
@@ -94,11 +99,11 @@ export default function ScoresTable({ countries, customBlocs, projector, started
   if (!started) {
     return (
       <section className="rounded-2xl border border-hairline bg-card p-6 shadow-card">
-        <h2 className="font-display text-2xl font-semibold text-ink">Live scores</h2>
+        <h2 className="font-display text-2xl font-semibold text-ink">{t.title}</h2>
         <EmptyState
           icon={Trophy}
-          title="No scores yet"
-          body="Start Round 1 from the command bar when your class is ready — scores appear here live."
+          title={t.emptyTitle}
+          body={t.emptyBody}
           className="py-10"
         />
       </section>
@@ -111,25 +116,23 @@ export default function ScoresTable({ countries, customBlocs, projector, started
   return (
     <section className="rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-6">
       <div className="mb-4 flex flex-wrap items-baseline gap-x-4">
-        <h2 className="font-display text-2xl font-semibold text-ink">Live scores</h2>
-        <span className="text-sm font-semibold text-ink-soft">
-          Students can't see this — only their own score.
-        </span>
+        <h2 className="font-display text-2xl font-semibold text-ink">{t.title}</h2>
+        <span className="text-sm font-semibold text-ink-soft">{t.subtitle}</span>
       </div>
       <div className="max-h-[560px] overflow-auto rounded-xl border border-hairline">
         <table className="w-full min-w-[880px] border-collapse">
           <thead className="sticky top-0 z-10">
             <tr className="bg-paper-deep text-left text-xs">
               <th className="w-12 px-3 py-3">#</th>
-              <th className="px-3 py-3">{headerBtn('country', 'Country')}</th>
-              <th className="px-3 py-3">Bloc</th>
-              <th className="px-3 py-3 text-right">{headerBtn('dealPoints', 'Deal pts')}</th>
-              <th className="px-3 py-3 text-right">{headerBtn('missionPoints', 'Mission pts')}</th>
-              <th className="px-3 py-3 text-right">{headerBtn('adjustments', 'Adjust.')}</th>
-              <th className="px-3 py-3 text-right">{headerBtn('total', 'Total')}</th>
-              <th className="hidden px-3 py-3 xl:table-cell">Deal actions</th>
+              <th className="px-3 py-3">{headerBtn('country', t.headers.country)}</th>
+              <th className="px-3 py-3">{t.headers.bloc}</th>
+              <th className="px-3 py-3 text-right">{headerBtn('dealPoints', t.headers.dealPts)}</th>
+              <th className="px-3 py-3 text-right">{headerBtn('missionPoints', t.headers.missionPts)}</th>
+              <th className="px-3 py-3 text-right">{headerBtn('adjustments', t.headers.adjust)}</th>
+              <th className="px-3 py-3 text-right">{headerBtn('total', t.headers.total)}</th>
+              <th className="hidden px-3 py-3 xl:table-cell">{t.headers.dealActions}</th>
               <th className="w-14 px-3 py-3">
-                <span className="sr-only">Edit score</span>
+                <span className="sr-only">{t.headers.editScore}</span>
               </th>
             </tr>
           </thead>
@@ -157,13 +160,13 @@ export default function ScoresTable({ countries, customBlocs, projector, started
                     <span className="mr-2" aria-hidden>
                       {c.flag}
                     </span>
-                    {c.country}
+                    {countryName(c.country, lang)}
                     {c.playerName && (
                       <span className="ml-2 text-sm font-semibold text-ink-soft">· {c.playerName}</span>
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    <BlocBadge bloc={blocKeyFor(c.bloc, customBlocs)} name={c.bloc} size="sm" />
+                    <BlocBadge bloc={blocKeyFor(c.bloc, customBlocs)} name={blocName(c.bloc, lang)} size="sm" />
                   </td>
                   <td className={cn('px-3 py-2 text-right font-mono font-semibold text-ink', textSize)}>
                     {c.score.dealPoints}
@@ -215,8 +218,8 @@ export default function ScoresTable({ countries, customBlocs, projector, started
                       type="button"
                       onClick={() => setEditing(c)}
                       className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-hairline bg-paper text-ink-soft transition-colors hover:bg-gold-soft hover:text-gold-ink"
-                      aria-label={`Adjust ${c.country}'s score`}
-                      title={`Adjust ${c.country}'s score`}
+                      aria-label={t.adjustAria(countryName(c.country, lang))}
+                      title={t.adjustAria(countryName(c.country, lang))}
                     >
                       <PenLine className="h-4 w-4" aria-hidden />
                     </motion.button>

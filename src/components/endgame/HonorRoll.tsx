@@ -1,11 +1,14 @@
 import { motion } from 'framer-motion'
 import { Globe, Lock, Star } from 'lucide-react'
+import { useLang, useStrings } from '@/lib/i18n'
+import { endgameStrings } from '@/lib/i18n/endgame'
+import { countryName } from '@/lib/i18n/shared'
 import type { FinalMission, ScoreRow } from './types'
 
-const SLOTS: { slot: FinalMission['slot']; label: string; icon: typeof Globe }[] = [
-  { slot: 'public', label: 'Public missions', icon: Globe },
-  { slot: 'private', label: 'Private missions', icon: Lock },
-  { slot: 'bonus', label: 'Bonus missions', icon: Star },
+const SLOTS: { slot: FinalMission['slot']; icon: typeof Globe }[] = [
+  { slot: 'public', icon: Globe },
+  { slot: 'private', icon: Lock },
+  { slot: 'bonus', icon: Star },
 ]
 
 const R = 26
@@ -13,16 +16,18 @@ const CIRC = 2 * Math.PI * R
 
 /** Section 3 — mission honor roll: who completed what, per mission slot. */
 export default function HonorRoll({ scoreboard }: { scoreboard: ScoreRow[] }) {
+  const { lang } = useLang()
+  const t = useStrings(endgameStrings).honorRoll
   return (
     <section
       aria-labelledby="honor-roll-title"
       className="rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-7"
     >
       <h2 id="honor-roll-title" className="font-display text-[26px] leading-8 font-semibold text-ink">
-        Mission honor roll
+        {t.title}
       </h2>
       <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-3">
-        {SLOTS.map(({ slot, label, icon: Icon }) => {
+        {SLOTS.map(({ slot, icon: Icon }) => {
           const completers = scoreboard.filter(
             (r) => r.missions.find((m) => m.slot === slot)?.status === 'completed',
           )
@@ -56,10 +61,10 @@ export default function HonorRoll({ scoreboard }: { scoreboard: ScoreRow[] }) {
                 <div>
                   <p className="flex items-center gap-1.5 text-base font-extrabold text-ink">
                     <Icon className="h-4 w-4 text-ink-soft" aria-hidden />
-                    {label}
+                    {t.slots[slot]}
                   </p>
                   <p className="text-sm font-semibold text-ink-soft">
-                    completed: {completers.length}/{total}
+                    {t.completed(completers.length, total)}
                   </p>
                 </div>
               </div>
@@ -72,16 +77,16 @@ export default function HonorRoll({ scoreboard }: { scoreboard: ScoreRow[] }) {
                       whileInView={{ scale: 1, opacity: 1 }}
                       viewport={{ amount: 0.3, once: true }}
                       transition={{ type: 'spring', stiffness: 380, damping: 22, delay: 0.2 + i * 0.03 }}
-                      title={r.country}
+                      title={countryName(r.country, lang)}
                       className="inline-flex items-center gap-1 rounded-full border border-hairline bg-paper px-2 py-1 text-xs font-bold text-ink"
                     >
                       <span aria-hidden>{r.flag}</span>
-                      {r.country}
+                      {countryName(r.country, lang)}
                     </motion.span>
                   ))}
                 </div>
               ) : (
-                <p className="text-sm font-semibold text-ink-faint">No country completed this one.</p>
+                <p className="text-sm font-semibold text-ink-faint">{t.none}</p>
               )}
             </div>
           )

@@ -7,18 +7,20 @@ import {
   countryFlag,
   countryFreeTrader,
   dealTypeUi,
-  timeAgo,
 } from '@/components/admin/admin-utils'
 import type { AdminDeal, AdminState } from '@/components/admin/admin-utils'
 import { DEAL_TYPES } from '@/lib/game-ui'
 import type { DealType } from '@/lib/game-ui'
+import { useLang, useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
+import { countryName, dealTypeName, powerName } from '@/lib/i18n/shared'
 import { cn } from '@/lib/utils'
 
-const TYPE_FILTERS: { ui: DealType; api: AdminDeal['dealType']; label: string }[] = [
-  { ui: 'military', api: 'military', label: DEAL_TYPES.military.label },
-  { ui: 'infrastructure', api: 'resources', label: DEAL_TYPES.infrastructure.label },
-  { ui: 'energy', api: 'energy', label: DEAL_TYPES.energy.label },
-  { ui: 'technology', api: 'tech', label: DEAL_TYPES.technology.label },
+const TYPE_FILTERS: { ui: DealType; api: AdminDeal['dealType'] }[] = [
+  { ui: 'military', api: 'military' },
+  { ui: 'infrastructure', api: 'resources' },
+  { ui: 'energy', api: 'energy' },
+  { ui: 'technology', api: 'tech' },
 ]
 
 export interface DealsMonitorProps {
@@ -28,6 +30,8 @@ export interface DealsMonitorProps {
 
 /** Deals monitor: pending offers first (teacher nudge list), then the full log. */
 export default function DealsMonitor({ state, started }: DealsMonitorProps) {
+  const { lang } = useLang()
+  const t = useStrings(adminStrings).deals
   const [tab, setTab] = useState<'pending' | 'all'>('pending')
   const [countryFilter, setCountryFilter] = useState<string>('all')
   const [typeFilter, setTypeFilter] = useState<AdminDeal['dealType'] | 'all'>('all')
@@ -58,9 +62,9 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
     >
       <DealTicket
         dealType={dealTypeUi(d.dealType)}
-        from={{ flag: countryFlag(d.initiatorCountry), name: d.initiatorCountry }}
-        to={{ flag: countryFlag(d.targetCountry), name: d.targetCountry }}
-        powerName={d.powerCard}
+        from={{ flag: countryFlag(d.initiatorCountry), name: countryName(d.initiatorCountry, lang) }}
+        to={{ flag: countryFlag(d.targetCountry), name: countryName(d.targetCountry, lang) }}
+        powerName={powerName(d.powerCard, lang)}
         note={d.note ?? undefined}
         pointsEach={pointsFor(d)}
         round={d.round}
@@ -68,7 +72,7 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
       />
       {d.status === 'pending' && (
         <div className="mt-1 pl-1 text-sm font-semibold text-ink-soft">
-          Sent {timeAgo(d.createdAt)} · waiting for {countryFlag(d.targetCountry)} {d.targetCountry}
+          {t.sentAgo(t.ago(d.createdAt), `${countryFlag(d.targetCountry)} ${countryName(d.targetCountry, lang)}`)}
         </div>
       )}
     </motion.div>
@@ -93,11 +97,11 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
   if (!started) {
     return (
       <section className="rounded-2xl border border-hairline bg-card p-6 shadow-card">
-        <h2 className="font-display text-2xl font-semibold text-ink">Deals</h2>
+        <h2 className="font-display text-2xl font-semibold text-ink">{t.title}</h2>
         <EmptyState
           icon={Handshake}
-          title="No deals yet"
-          body="Once the game starts, every offer and signed treaty shows up here in real time."
+          title={t.emptyTitle}
+          body={t.emptyBody}
           className="py-8"
         />
       </section>
@@ -129,10 +133,10 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
   return (
     <section className="rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-6">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h2 className="font-display text-2xl font-semibold text-ink">Deals</h2>
+        <h2 className="font-display text-2xl font-semibold text-ink">{t.title}</h2>
         <div className="flex gap-2">
-          {tabBtn('pending', 'Pending', pending.length)}
-          {tabBtn('all', 'All deals', state.allDeals.length)}
+          {tabBtn('pending', t.tabPending, pending.length)}
+          {tabBtn('all', t.tabAll, state.allDeals.length)}
         </div>
       </div>
 
@@ -148,15 +152,13 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
             {pending.length === 0 ? (
               <EmptyState
                 icon={Handshake}
-                title="No stuck offers"
-                body="Every offer has been answered. New offers appear here while they wait."
+                title={t.noStuckTitle}
+                body={t.noStuckBody}
                 className="py-8"
               />
             ) : (
               <>
-                <p className="mb-3 text-sm font-semibold text-ink-soft">
-                  Only the players can accept or cancel — but you can remind them!
-                </p>
+                <p className="mb-3 text-sm font-semibold text-ink-soft">{t.nudge}</p>
                 <div className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
                   <AnimatePresence initial={false}>{pending.map(present)}</AnimatePresence>
                 </div>
@@ -175,10 +177,10 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
               <select
                 value={countryFilter}
                 onChange={(e) => setCountryFilter(e.target.value)}
-                aria-label="Filter by country"
+                aria-label={t.filterCountry}
                 className="rounded-lg border border-hairline bg-paper px-3 py-2 text-sm font-bold text-ink"
               >
-                <option value="all">All countries</option>
+                <option value="all">{t.allCountries}</option>
                 {state.countries.map((c) => (
                   <option key={c.country} value={c.country}>
                     {c.flag} {c.country}
@@ -194,17 +196,17 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
                   typeFilter === 'all' ? 'bg-ink text-paper' : 'bg-paper-deep text-ink-soft',
                 )}
               >
-                All types
+                {t.allTypes}
               </button>
-              {TYPE_FILTERS.map((t) => {
-                const meta = DEAL_TYPES[t.ui]
+              {TYPE_FILTERS.map((f) => {
+                const meta = DEAL_TYPES[f.ui]
                 const Icon = meta.icon
-                const active = typeFilter === t.api
+                const active = typeFilter === f.api
                 return (
                   <button
-                    key={t.api}
+                    key={f.api}
                     type="button"
-                    onClick={() => setTypeFilter(active ? 'all' : t.api)}
+                    onClick={() => setTypeFilter(active ? 'all' : f.api)}
                     aria-pressed={active}
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-extrabold transition-colors',
@@ -217,7 +219,7 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
                     }
                   >
                     <Icon className="h-3.5 w-3.5" aria-hidden />
-                    {t.label}
+                    {dealTypeName(f.api, lang)}
                   </button>
                 )
               })}
@@ -225,8 +227,8 @@ export default function DealsMonitor({ state, started }: DealsMonitorProps) {
             {allFiltered.length === 0 ? (
               <EmptyState
                 icon={Handshake}
-                title="Nothing matches"
-                body="No deals match these filters yet."
+                title={t.nothingMatches}
+                body={t.noMatchBody}
                 className="py-8"
               />
             ) : (

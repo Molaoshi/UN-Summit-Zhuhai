@@ -6,6 +6,8 @@ import { trpc } from '@/providers/trpc'
 import ConfirmDialog from '@/components/admin/ConfirmDialog'
 import { useAdminCtx } from '@/components/admin/admin-utils'
 import type { AdminRoom } from '@/components/admin/admin-utils'
+import { useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
 import { cn } from '@/lib/utils'
 
 export interface CommandBarProps {
@@ -21,11 +23,11 @@ export interface CommandBarProps {
 
 type PendingAction = 'start' | 'closeRound' | 'nextRound' | 'endGame' | null
 
-const PHASE_META: Record<string, { label: string; color: string; soft: string }> = {
-  lobby: { label: 'LOBBY', color: '#8B8F82', soft: '#E8E4D8' },
-  negotiation: { label: 'NEGOTIATION', color: '#2E6E6A', soft: '#D9E7E4' },
-  round_end: { label: 'ROUND END', color: '#B07E22', soft: '#F2E4C6' },
-  ended: { label: 'ENDED', color: '#4F7A52', soft: '#DDE8D9' },
+const PHASE_META: Record<string, { color: string; soft: string }> = {
+  lobby: { color: '#8B8F82', soft: '#E8E4D8' },
+  negotiation: { color: '#2E6E6A', soft: '#D9E7E4' },
+  round_end: { color: '#B07E22', soft: '#F2E4C6' },
+  ended: { color: '#4F7A52', soft: '#DDE8D9' },
 }
 
 /** Sticky command strip: room code, round state, and the lifecycle buttons. */
@@ -38,13 +40,14 @@ export default function CommandBar({
   onToggleProjector,
   onLock,
 }: CommandBarProps) {
+  const t = useStrings(adminStrings)
   const { creds, notify, refresh } = useAdminCtx()
   const [pendingAction, setPendingAction] = useState<PendingAction>(null)
   const [copied, setCopied] = useState(false)
 
   const startGame = trpc.admin.startGame.useMutation({
     onSuccess: () => {
-      notify('Round 1 has begun!')
+      notify(t.command.toastStarted)
       refresh()
     },
     onError: (e) => notify(e.message),
@@ -53,8 +56,8 @@ export default function CommandBar({
     onSuccess: (r) => {
       notify(
         r.roundPhase === 'round_end'
-          ? `Round ${r.currentRound} negotiation closed — bloc choice is open.`
-          : `Round ${r.currentRound} has begun. Deal actions reset to 3.`,
+          ? t.command.toastRoundClosed(r.currentRound)
+          : t.command.toastRoundBegan(r.currentRound),
       )
       refresh()
     },
@@ -62,7 +65,7 @@ export default function CommandBar({
   })
   const endGame = trpc.admin.endGame.useMutation({
     onSuccess: () => {
-      notify('The summit has ended — results revealed!')
+      notify(t.command.toastEnded)
       refresh()
     },
     onError: (e) => notify(e.message),
@@ -71,6 +74,8 @@ export default function CommandBar({
   const busy = startGame.isPending || endRound.isPending || endGame.isPending
   const phaseKey = room.status === 'playing' ? room.roundPhase : room.status
   const phase = PHASE_META[phaseKey] ?? PHASE_META.lobby
+  const phaseLabel =
+    t.header.phase[phaseKey as keyof typeof t.header.phase] ?? t.header.phase.lobby
 
   const copyCode = async () => {
     try {
@@ -78,7 +83,7 @@ export default function CommandBar({
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1500)
     } catch {
-      notify(`Room code: ${room.code}`)
+      notify(t.command.toastRoomCode(room.code))
     }
   }
 
@@ -94,13 +99,13 @@ export default function CommandBar({
   let primaryLabel = ''
   let primaryAction: PendingAction = null
   if (room.status === 'lobby') {
-    primaryLabel = 'Start Round 1'
+    primaryLabel = t.command.startRound1
     primaryAction = 'start'
   } else if (room.status === 'playing' && room.roundPhase === 'negotiation') {
-    primaryLabel = `End Round ${room.currentRound}`
+    primaryLabel = t.command.endRound(room.currentRound)
     primaryAction = 'closeRound'
   } else if (room.status === 'playing' && room.roundPhase === 'round_end') {
-    primaryLabel = `Begin Round ${room.currentRound + 1}`
+    primaryLabel = t.command.beginRound(room.currentRound + 1)
     primaryAction = 'nextRound'
   }
   const canEndGame = room.status === 'playing'
@@ -112,14 +117,14 @@ export default function CommandBar({
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
         className="sticky top-14 z-40 border-b border-hairline bg-card/95 backdrop-blur md:top-16"
-        aria-label="Command bar"
+        aria-label={t.command.aria}
       >
         <div className="mx-auto flex max-w-[1440px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-8">
           {/* Room code */}
           <div className="flex items-center gap-3">
             <div>
               <div className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                Room code
+                {t.command.roomCode}
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-3xl font-semibold tracking-[0.12em] text-ink md:text-4xl">
@@ -129,15 +134,15 @@ export default function CommandBar({
                   type="button"
                   onClick={copyCode}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-hairline bg-paper text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
-                  aria-label="Copy room code"
-                  title="Copy room code"
+                  aria-label={t.command.copyRoomCode}
+                  title={t.command.copyRoomCode}
                 >
                   <Copy className="h-4 w-4" aria-hidden />
                 </button>
               </div>
               <span className="mt-1 hidden items-center gap-1.5 rounded-full bg-gold-soft px-2.5 py-0.5 text-xs font-bold text-gold-ink lg:inline-flex">
                 <Presentation className="h-3 w-3" aria-hidden />
-                {copied ? 'Copied — paste it for students' : 'Project this for students'}
+                {copied ? t.command.copied : t.command.projectThis}
               </span>
             </div>
           </div>
@@ -151,17 +156,17 @@ export default function CommandBar({
               transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
               className="font-display text-2xl font-semibold text-ink md:text-3xl"
             >
-              {room.status === 'lobby' ? 'Not started' : `Round ${room.currentRound}`}
+              {room.status === 'lobby' ? t.command.notStarted : t.command.round(room.currentRound)}
             </motion.span>
             <span
               className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-extrabold uppercase tracking-[0.10em]"
               style={{ backgroundColor: phase.soft, color: phase.color }}
             >
               <span className="h-2 w-2 rounded-full" style={{ backgroundColor: phase.color }} aria-hidden />
-              {phase.label}
+              {phaseLabel}
             </span>
             <span className="hidden text-sm font-semibold text-ink-soft xl:block">
-              {signedCount} deals signed · {pendingCount} offers pending
+              {t.command.dealsSummary(signedCount, pendingCount)}
             </span>
           </div>
 
@@ -171,7 +176,7 @@ export default function CommandBar({
               type="button"
               onClick={onToggleProjector}
               aria-pressed={projector}
-              title="Projector mode: enlarge all text"
+              title={t.command.projectorTitle}
               className={cn(
                 'inline-flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-extrabold transition-colors',
                 projector
@@ -180,16 +185,16 @@ export default function CommandBar({
               )}
             >
               <Projector className="h-4 w-4" aria-hidden />
-              <span className="hidden md:inline">Projector</span>
+              <span className="hidden md:inline">{t.command.projector}</span>
             </button>
             <button
               type="button"
               onClick={onLock}
-              title="Lock admin (returns to the PIN gate)"
+              title={t.command.lockTitle}
               className="inline-flex h-11 items-center gap-2 rounded-xl border border-hairline bg-paper px-3.5 text-sm font-extrabold text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
             >
               <Lock className="h-4 w-4" aria-hidden />
-              <span className="hidden md:inline">Lock</span>
+              <span className="hidden md:inline">{t.command.lock}</span>
             </button>
             {room.status === 'ended' ? (
               <Link
@@ -197,7 +202,7 @@ export default function CommandBar({
                 className="inline-flex h-14 items-center gap-2 rounded-xl bg-ink px-6 text-lg font-extrabold text-paper shadow-card transition-colors hover:bg-ink/90"
               >
                 <Flag className="h-5 w-5" aria-hidden />
-                View final results
+                {t.command.viewResults}
               </Link>
             ) : (
               <>
@@ -226,11 +231,11 @@ export default function CommandBar({
                     className="inline-flex h-14 items-center gap-2 rounded-xl border-2 border-status-failed bg-card px-5 text-lg font-extrabold text-status-failed transition-colors hover:bg-status-failed-soft disabled:opacity-50"
                   >
                     <Flag className="h-5 w-5" aria-hidden />
-                    End Game
+                    {t.command.endGame}
                   </motion.button>
                   {!canEndGame && (
                     <span className="mt-0.5 text-xs font-semibold text-ink-faint">
-                      Start the game first
+                      {t.command.startFirstHint}
                     </span>
                   )}
                 </div>
@@ -244,14 +249,10 @@ export default function CommandBar({
       <ConfirmDialog
         open={pendingAction === 'start'}
         onClose={() => setPendingAction(null)}
-        title="Start Round 1?"
-        body="The summit opens for every seated player."
-        effects={[
-          'All players see their country dossier and missions.',
-          'Deal actions open: 3 per country per round.',
-          'Suggested pace: 4–6 rounds · 2–2.5 hours.',
-        ]}
-        confirmLabel="Yes, start Round 1"
+        title={t.command.confirm.start.title}
+        body={t.command.confirm.start.body}
+        effects={t.command.confirm.start.effects}
+        confirmLabel={t.command.confirm.start.confirmLabel}
         icon={Play}
         loading={startGame.isPending}
         onConfirm={confirm}
@@ -259,14 +260,10 @@ export default function CommandBar({
       <ConfirmDialog
         open={pendingAction === 'closeRound'}
         onClose={() => setPendingAction(null)}
-        title={`Close negotiation for Round ${room.currentRound}?`}
-        body="Players stop negotiating and choose their blocs."
-        effects={[
-          'Negotiation closes — no new offers.',
-          'Players pick (or found) a bloc for next round.',
-          'Last deal actions of the round can still be used.',
-        ]}
-        confirmLabel={`Yes, close Round ${room.currentRound}`}
+        title={t.command.confirm.closeRound.title(room.currentRound)}
+        body={t.command.confirm.closeRound.body}
+        effects={t.command.confirm.closeRound.effects}
+        confirmLabel={t.command.confirm.closeRound.confirmLabel(room.currentRound)}
         icon={RefreshCw}
         loading={endRound.isPending}
         onConfirm={confirm}
@@ -274,14 +271,10 @@ export default function CommandBar({
       <ConfirmDialog
         open={pendingAction === 'nextRound'}
         onClose={() => setPendingAction(null)}
-        title={`Begin Round ${room.currentRound + 1}?`}
-        body="The next negotiation round starts for everyone."
-        effects={[
-          "Players' bloc choices lock in.",
-          'Mission statuses re-check automatically.',
-          'Deal actions reset to 3 per country.',
-        ]}
-        confirmLabel={`Yes, begin Round ${room.currentRound + 1}`}
+        title={t.command.confirm.nextRound.title(room.currentRound + 1)}
+        body={t.command.confirm.nextRound.body}
+        effects={t.command.confirm.nextRound.effects}
+        confirmLabel={t.command.confirm.nextRound.confirmLabel(room.currentRound + 1)}
         icon={RefreshCw}
         loading={endRound.isPending}
         onConfirm={confirm}
@@ -289,15 +282,11 @@ export default function CommandBar({
       <ConfirmDialog
         open={pendingAction === 'endGame'}
         onClose={() => setPendingAction(null)}
-        title="End the summit?"
+        title={t.command.confirm.endGame.title}
         tone="danger"
-        body="All scores, blocs, and missions will be revealed on every screen. This cannot be undone."
-        effects={[
-          'Final mission results are graded.',
-          'Every player sees the full scoreboard.',
-          'No more deals or bloc changes.',
-        ]}
-        confirmLabel="Yes, reveal the results"
+        body={t.command.confirm.endGame.body}
+        effects={t.command.confirm.endGame.effects}
+        confirmLabel={t.command.confirm.endGame.confirmLabel}
         loading={endGame.isPending}
         onConfirm={confirm}
       />
