@@ -11,6 +11,7 @@ import {
   deals,
   players,
   type Deal,
+  type Room,
 } from "@db/schema";
 import {
   COUNTRY_BY_NAME,
@@ -94,6 +95,84 @@ function feedEntry(d: Deal) {
     targetCountry: d.targetCountry,
     dealTypeLabel: DEAL_TYPES[d.dealType],
     createdAt: d.createdAt,
+  };
+}
+
+/**
+ * God view for the teacher dashboard. Shared by `adminState` (code+pin auth)
+ * and `spectatorState` (assistant token auth) so both return the same payload.
+ */
+async function buildAdminState(d: Db, room: Room) {
+  const facts = await buildFacts(d, room);
+  const allDeals = await roomDeals(d, room.id);
+  const roomPlayers = await d
+    .select()
+    .from(players)
+    .where(eq(players.roomId, room.id))
+    .orderBy(asc(players.id));
+
+  const active = activeCountryData(room);
+  // Unclaimed active countries keep their seat/bloc but have no delegate:
+  // no missions, no score rows.
+  const countries = await Promise.all(
+    active.map(async (c) => {
+      const holder = roomPlayers.find(
+        (p) => !p.isAdmin && p.countryName === c.name,
+      );
+      const claimed = !!holder;
+      return {
+        country: c.name,
+        countryZh: c.nameZh ?? c.name,
+        flag: c.flag,
+        bloc: facts.currentBlocs[c.name],
+        claimed,
+        playerName: holder?.name ?? null,
+        playerId: holder?.id ?? null,
+        missions: claimed ? evaluateMissions(c.name, facts) : [],
+        score: claimed ? computeScore(c.name, facts) : emptyScore(c.name),
+        actionsUsedThisRound:
+          claimed && room.status === "playing"
+            ? await actionsUsed(d, room.id, room.currentRound, c.name)
+            : 0,
+      };
+    }),
+  );
+
+  const blocHistory = await d
+    .select()
+    .from(blocMemberships)
+    .where(eq(blocMemberships.roomId, room.id))
+    .orderBy(asc(blocMemberships.id));
+
+  const log = await d
+    .select()
+    .from(activityLog)
+    .where(eq(activityLog.roomId, room.id))
+    .orderBy(desc(activityLog.id))
+    .limit(200);
+
+  return {
+    room: {
+      code: room.code,
+      status: room.status,
+      currentRound: room.currentRound,
+      roundPhase: room.roundPhase,
+    },
+    activeCountries: activeCountriesOf(room),
+    players: roomPlayers.map((p) => ({
+      id: p.id,
+      name: p.name,
+      isAdmin: p.isAdmin,
+      isAssistant: p.isAssistant,
+      countryName: p.countryName,
+    })),
+    countries,
+    pendingDeals: allDeals
+      .filter((x) => x.status === "pending")
+      .map(presentDeal),
+    allDeals: allDeals.map(presentDeal),
+    blocHistory,
+    activityLog: log.reverse(), // chronological
   };
 }
 
@@ -186,6 +265,7 @@ export const gameRouter = createRouter({
         me: {
           name: player.name,
           isAdmin: player.isAdmin,
+          isAssistant: player.isAssistant,
           countryName: myCountryName,
         },
         myCountry: myData,
@@ -237,76 +317,26 @@ export const gameRouter = createRouter({
     .query(async ({ input }) => {
       const room = await requireAdmin(input.code, input.pin);
       const d = await db();
-      const facts = await buildFacts(d, room);
-      const allDeals = await roomDeals(d, room.id);
-      const roomPlayers = await d
-        .select()
-        .from(players)
-        .where(eq(players.roomId, room.id))
-        .orderBy(asc(players.id));
+      return buildAdminState(d, room);
+    }),
 
-      const active = activeCountryData(room);
-      // Unclaimed active countries keep their seat/bloc but have no delegate:
-      // no missions, no score rows.
-      const countries = await Promise.all(
-        active.map(async (c) => {
-          const holder = roomPlayers.find(
-            (p) => !p.isAdmin && p.countryName === c.name,
-          );
-          const claimed = !!holder;
-          return {
-            country: c.name,
-            countryZh: c.nameZh ?? c.name,
-            flag: c.flag,
-            bloc: facts.currentBlocs[c.name],
-            claimed,
-            playerName: holder?.name ?? null,
-            playerId: holder?.id ?? null,
-            missions: claimed ? evaluateMissions(c.name, facts) : [],
-            score: claimed ? computeScore(c.name, facts) : emptyScore(c.name),
-            actionsUsedThisRound:
-              claimed && room.status === "playing"
-                ? await actionsUsed(d, room.id, room.currentRound, c.name)
-                : 0,
-          };
-        }),
-      );
-
-      const blocHistory = await d
-        .select()
-        .from(blocMemberships)
-        .where(eq(blocMemberships.roomId, room.id))
-        .orderBy(asc(blocMemberships.id));
-
-      const log = await d
-        .select()
-        .from(activityLog)
-        .where(eq(activityLog.roomId, room.id))
-        .orderBy(desc(activityLog.id))
-        .limit(200);
-
-      return {
-        room: {
-          code: room.code,
-          status: room.status,
-          currentRound: room.currentRound,
-          roundPhase: room.roundPhase,
-        },
-        activeCountries: activeCountriesOf(room),
-        players: roomPlayers.map((p) => ({
-          id: p.id,
-          name: p.name,
-          isAdmin: p.isAdmin,
-          countryName: p.countryName,
-        })),
-        countries,
-        pendingDeals: allDeals
-          .filter((x) => x.status === "pending")
-          .map(presentDeal),
-        allDeals: allDeals.map(presentDeal),
-        blocHistory,
-        activityLog: log.reverse(), // chronological
-      };
+  /**
+   * Read-only god view for an admin assistant. Auth is the assistant's player
+   * token (must have is_assistant); the payload is identical to adminState.
+   * Read-only by construction — every mutation still requires code + pin.
+   */
+  spectatorState: publicQuery
+    .input(z.object({ token: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const { player, room } = await requirePlayer(input.token);
+      if (!player.isAssistant) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only admin assistants can open the spectator dashboard.",
+        });
+      }
+      const d = await db();
+      return buildAdminState(d, room);
     }),
 
   /**

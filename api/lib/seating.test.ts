@@ -6,7 +6,9 @@ import { COUNTRIES } from "@contracts/game-data";
 import {
   claimedCountries,
   claimedCountryData,
+  MAX_ASSISTANTS_PER_ROOM,
   planAssignSeat,
+  planSetAssistant,
   seatHolder,
   unseatedPlayers,
   type SeatRow,
@@ -17,8 +19,9 @@ function player(
   name: string,
   countryName: string | null = null,
   isAdmin = false,
+  isAssistant = false,
 ): SeatRow {
-  return { id: ++pid, name, countryName, isAdmin };
+  return { id: ++pid, name, countryName, isAdmin, isAssistant };
 }
 
 const ACTIVE = ["China", "USA", "Japan", "France"];
@@ -32,7 +35,17 @@ describe("claimedCountries / unseatedPlayers", () => {
       player("Cy"), // unseated
     ];
     expect(claimedCountries(players)).toEqual(new Set(["USA", "Japan"]));
-    expect(unseatedPlayers(players)).toEqual([{ id: players[3].id, name: "Cy" }]);
+    expect(unseatedPlayers(players)).toEqual([
+      { id: players[3].id, name: "Cy", isAssistant: false },
+    ]);
+  });
+
+  it("unseated entries expose isAssistant so the lobby can label them", () => {
+    const players = [player("Ada", null, false, true), player("Bo")];
+    expect(unseatedPlayers(players)).toEqual([
+      { id: players[0].id, name: "Ada", isAssistant: true },
+      { id: players[1].id, name: "Bo", isAssistant: false },
+    ]);
   });
 
   it("an admin holding a country (should never happen) is not a claim", () => {
@@ -111,5 +124,116 @@ describe("planAssignSeat", () => {
       ok: false,
       reason: "player_is_admin",
     });
+  });
+
+  it("flags clearsAssistant when the target is an assistant", () => {
+    const ada = player("Ada", null, false, true);
+    const plan = planAssignSeat([ada], ada.id, "USA", ACTIVE);
+    expect(plan).toMatchObject({
+      ok: true,
+      noop: false,
+      clearsAssistant: true,
+      previousCountry: null,
+    });
+  });
+
+  it("does not flag clearsAssistant for a regular player", () => {
+    const ada = player("Ada");
+    const plan = planAssignSeat([ada], ada.id, "USA", ACTIVE);
+    expect(plan).toMatchObject({ ok: true, clearsAssistant: false });
+  });
+});
+
+describe("planSetAssistant", () => {
+  it("promotes an unseated player to assistant", () => {
+    const ada = player("Ada");
+    const plan = planSetAssistant([ada], ada.id, true);
+    expect(plan).toMatchObject({
+      ok: true,
+      noop: false,
+      assistant: true,
+      releasedCountry: null,
+    });
+  });
+
+  it("promoting releases the player's country seat", () => {
+    const ada = player("Ada", "USA");
+    const plan = planSetAssistant([ada], ada.id, true);
+    expect(plan).toMatchObject({
+      ok: true,
+      noop: false,
+      assistant: true,
+      releasedCountry: "USA",
+    });
+  });
+
+  it("demoting returns the assistant to unseated (no seat restored)", () => {
+    const ada = player("Ada", null, false, true);
+    const plan = planSetAssistant([ada], ada.id, false);
+    expect(plan).toMatchObject({
+      ok: true,
+      noop: false,
+      assistant: false,
+      releasedCountry: null,
+    });
+  });
+
+  it("is a no-op when the player is already in the requested state", () => {
+    const ada = player("Ada", null, false, true);
+    expect(planSetAssistant([ada], ada.id, true)).toMatchObject({
+      ok: true,
+      noop: true,
+    });
+    const bo = player("Bo");
+    expect(planSetAssistant([bo], bo.id, false)).toMatchObject({
+      ok: true,
+      noop: true,
+    });
+  });
+
+  it("rejects unknown player ids and the room admin", () => {
+    const ada = player("Ada");
+    const teacher = player("Teacher", null, true);
+    expect(planSetAssistant([ada], 9999, true)).toEqual({
+      ok: false,
+      reason: "player_not_found",
+    });
+    expect(planSetAssistant([ada, teacher], teacher.id, true)).toEqual({
+      ok: false,
+      reason: "player_is_admin",
+    });
+  });
+
+  it("allows up to MAX_ASSISTANTS_PER_ROOM assistants, then rejects", () => {
+    const assistants = Array.from({ length: MAX_ASSISTANTS_PER_ROOM }, (_, i) =>
+      player(`A${i}`, null, false, true),
+    );
+    const extra = player("Extra");
+    expect(
+      planSetAssistant([...assistants, extra], extra.id, true),
+    ).toEqual({ ok: false, reason: "assistant_limit" });
+    // Demoting is always allowed, even at the cap.
+    expect(
+      planSetAssistant(assistants, assistants[0].id, false),
+    ).toMatchObject({ ok: true, noop: false, assistant: false });
+    // One below the cap still promotes fine.
+    const belowCap = assistants.slice(1);
+    expect(
+      planSetAssistant([...belowCap, extra], extra.id, true),
+    ).toMatchObject({ ok: true, noop: false, assistant: true });
+  });
+
+  it("the room admin does not count toward the assistant cap", () => {
+    const teacher = player("Teacher", null, true, true); // inconsistent, but robust
+    const assistants = Array.from({ length: MAX_ASSISTANTS_PER_ROOM }, (_, i) =>
+      player(`A${i}`, null, false, true),
+    );
+    const extra = player("Extra");
+    expect(
+      planSetAssistant([teacher, ...assistants, extra], extra.id, true),
+    ).toEqual({ ok: false, reason: "assistant_limit" });
+    expect(
+      planSetAssistant([teacher, ...assistants.slice(1), extra], extra.id, true),
+    ).toMatchObject({ ok: true });
   });
 });

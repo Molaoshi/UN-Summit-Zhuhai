@@ -174,6 +174,7 @@ export const roomRouter = createRouter({
         player: {
           name: player.name,
           isAdmin: player.isAdmin,
+          isAssistant: player.isAssistant,
           countryName: player.countryName,
         },
       };

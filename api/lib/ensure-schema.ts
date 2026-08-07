@@ -41,6 +41,7 @@ const DDL_STATEMENTS: DdlStatement[] = [
 	\`name\` varchar(64) NOT NULL,
 	\`country_name\` varchar(32),
 	\`is_admin\` boolean NOT NULL DEFAULT false,
+	\`is_assistant\` boolean NOT NULL DEFAULT false,
 	\`created_at\` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT \`players_id\` PRIMARY KEY(\`id\`),
 	CONSTRAINT \`players_token_unique\` UNIQUE(\`token\`),
@@ -158,6 +159,11 @@ const ENSURE_COLUMNS: { table: string; column: string; ddl: string }[] = [
     table: "activity_log",
     column: "params",
     ddl: "ALTER TABLE `activity_log` ADD COLUMN `params` json NULL AFTER `message`",
+  },
+  {
+    table: "players",
+    column: "is_assistant",
+    ddl: "ALTER TABLE `players` ADD COLUMN `is_assistant` boolean NOT NULL DEFAULT false AFTER `is_admin`",
   },
 ];
 

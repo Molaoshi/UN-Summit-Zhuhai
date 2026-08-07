@@ -13,7 +13,7 @@ import {
   scoreAdjustments,
 } from "@db/schema";
 import { COUNTRY_BY_NAME, resolveActiveCountries } from "@contracts/game-data";
-import { planAssignSeat } from "../lib/seating";
+import { planAssignSeat, planSetAssistant } from "../lib/seating";
 import { createRouter, publicQuery } from "../middleware";
 import { activeCountriesOf, db, logActivity, requireAdmin } from "./helpers";
 
@@ -215,6 +215,74 @@ export const adminRouter = createRouter({
     }),
 
   /**
+   * Teacher promotes/demotes a joined player as an "Admin Assistant": a
+   * read-only spectator of the admin dashboard (max 4 per room). Promoting
+   * releases the player's country seat; demoting returns them to unseated.
+   * The room's admin player cannot be an assistant.
+   */
+  setAssistant: publicQuery
+    .input(
+      z.object({
+        ...adminAuth,
+        playerId: z.number().int().positive(),
+        assistant: z.boolean(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const room = await requireAdmin(input.code, input.pin);
+      const d = await db();
+      const roomPlayers = await d
+        .select()
+        .from(players)
+        .where(eq(players.roomId, room.id));
+      const plan = planSetAssistant(roomPlayers, input.playerId, input.assistant);
+      if (!plan.ok) {
+        throw new TRPCError({
+          code:
+            plan.reason === "player_not_found"
+              ? "NOT_FOUND"
+              : plan.reason === "player_is_admin"
+                ? "FORBIDDEN"
+                : "CONFLICT",
+          message:
+            plan.reason === "player_not_found"
+              ? "No player with that id in this room."
+              : plan.reason === "player_is_admin"
+                ? "The teacher runs the room and cannot be an assistant."
+                : "This room already has the maximum of 4 admin assistants.",
+        });
+      }
+      if (!plan.noop) {
+        await d
+          .update(players)
+          .set(
+            input.assistant
+              ? { isAssistant: true, countryName: null }
+              : { isAssistant: false, countryName: null },
+          )
+          .where(eq(players.id, plan.player.id));
+      }
+      await logActivity(
+        d,
+        room,
+        "assistant_set",
+        input.assistant
+          ? `${plan.player.name} is now an admin assistant (read-only dashboard view)` +
+              `${plan.releasedCountry ? `; released ${plan.releasedCountry}` : ""}.`
+          : `${plan.player.name} is no longer an admin assistant.`,
+        { player: plan.player.name, assistant: input.assistant },
+      );
+      return {
+        ok: true,
+        changed: !plan.noop,
+        playerId: plan.player.id,
+        playerName: plan.player.name,
+        assistant: input.assistant,
+        releasedCountry: plan.releasedCountry,
+      };
+    }),
+
+  /**
    * Teacher assigns a logged-in player to a country seat. Works in the lobby
    * AND mid-game (late joiners). If the country is held by another player
    * they are released; if the player already holds another seat they move.
@@ -274,9 +342,15 @@ export const adminRouter = createRouter({
             .set({ countryName: null })
             .where(eq(players.id, plan.evictedPlayer.id));
         }
+        // Seating an assistant converts them back to a regular player.
         await d
           .update(players)
-          .set({ countryName: country.name })
+          .set({ countryName: country.name, isAssistant: false })
+          .where(eq(players.id, plan.player.id));
+      } else if (plan.clearsAssistant) {
+        await d
+          .update(players)
+          .set({ isAssistant: false })
           .where(eq(players.id, plan.player.id));
       }
       const evicted = plan.evictedPlayer;

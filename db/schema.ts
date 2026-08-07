@@ -44,6 +44,9 @@ export const players = mysqlTable(
     // Nullable until the player claims a seat; unique per room (NULLs allowed).
     countryName: varchar("country_name", { length: 32 }),
     isAdmin: boolean("is_admin").notNull().default(false),
+    // Read-only spectator of the admin dashboard (max 4 per room). Assistants
+    // never hold a country seat (promoting releases it, seating clears it).
+    isAssistant: boolean("is_assistant").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
