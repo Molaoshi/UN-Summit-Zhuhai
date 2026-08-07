@@ -4,6 +4,9 @@ import type { CountryData } from '@contracts/game-data'
 import BottomSheet from '@/components/BottomSheet'
 import PowerChip from '@/components/PowerChip'
 import RatingBar from '@/components/RatingBar'
+import { useLang, useStrings } from '@/lib/i18n'
+import { blocName, countryName, powerName } from '@/lib/i18n/shared'
+import lobbyStrings from '@/lib/i18n/lobby'
 import type { DealType } from '@/lib/game-ui'
 
 const ASSET_TO_DEAL: Record<string, DealType> = {
@@ -13,11 +16,11 @@ const ASSET_TO_DEAL: Record<string, DealType> = {
   tech: 'technology',
 }
 
-const ASSET_ORDER: { key: keyof CountryData['assets']; label: string }[] = [
-  { key: 'military', label: 'Military' },
-  { key: 'resources', label: 'Resources' },
-  { key: 'energy', label: 'Energy' },
-  { key: 'tech', label: 'Technology' },
+const ASSET_ORDER: { key: keyof CountryData['assets'] }[] = [
+  { key: 'military' },
+  { key: 'resources' },
+  { key: 'energy' },
+  { key: 'tech' },
 ]
 
 export interface ClaimSheetProps {
@@ -41,9 +44,16 @@ export default function ClaimSheet({
   onConfirm,
   onClose,
 }: ClaimSheetProps) {
+  const { lang } = useLang()
+  const s = useStrings(lobbyStrings)
   const publicMission = country?.missions.find((m) => m.slot === 'public')
+  const displayName = country ? countryName(country.name, lang) : ''
   return (
-    <BottomSheet open={open} onClose={onClose} title={country ? `Claim ${country.name}` : 'Claim seat'}>
+    <BottomSheet
+      open={open}
+      onClose={onClose}
+      title={country ? s.claim.title(displayName) : s.claim.titleFallback}
+    >
       <AnimatePresence mode="wait" initial={false}>
         {conflictName ? (
           <motion.div
@@ -56,15 +66,15 @@ export default function ClaimSheet({
           >
             <AlertTriangle className="h-10 w-10 text-status-atrisk" aria-hidden />
             <h3 className="font-display text-2xl font-semibold text-ink">
-              Too slow — {conflictName} just took this seat.
+              {s.claim.conflictTitle(conflictName)}
             </h3>
-            <p className="text-base text-ink-soft">Pick another country!</p>
+            <p className="text-base text-ink-soft">{s.claim.conflictBody}</p>
             <button
               type="button"
               onClick={onClose}
               className="mt-3 min-h-12 w-full rounded-xl bg-ink text-base font-bold text-paper transition-colors hover:bg-ink/90"
             >
-              Back to the map
+              {s.claim.conflictBack}
             </button>
           </motion.div>
         ) : country ? (
@@ -81,10 +91,10 @@ export default function ClaimSheet({
               </span>
               <div>
                 <h3 className="font-display text-2xl font-semibold leading-8 text-ink">
-                  You are about to become {country.name}
+                  {s.claim.become(displayName)}
                 </h3>
                 <p className="text-sm font-semibold text-ink-soft">
-                  Starting bloc: {country.startingBloc}
+                  {s.claim.startingBloc(blocName(country.startingBloc, lang))}
                 </p>
               </div>
             </div>
@@ -95,13 +105,13 @@ export default function ClaimSheet({
                 {country.hasEspionage && (
                   <p className="inline-flex items-center gap-2 text-sm font-bold text-gold-ink">
                     <Eye className="h-4 w-4" aria-hidden />
-                    Espionage — you can spy on other countries' secrets.
+                    {s.claim.espionage}
                   </p>
                 )}
                 {country.freeCrossBloc && (
                   <p className="inline-flex items-center gap-2 text-sm font-bold text-status-ontrack">
                     <Handshake className="h-4 w-4" aria-hidden />
-                    Free Trader — you earn 3 pts on every deal, even outside your bloc.
+                    {s.claim.freeTrader}
                   </p>
                 )}
               </div>
@@ -109,7 +119,7 @@ export default function ClaimSheet({
 
             {/* Dossier: assets with full rating bars + power cards */}
             <div className="flex flex-col gap-4">
-              {ASSET_ORDER.map(({ key, label }, i) => {
+              {ASSET_ORDER.map(({ key }, i) => {
                 const asset = country.assets[key]
                 const dealType = ASSET_TO_DEAL[key]
                 return (
@@ -121,7 +131,7 @@ export default function ClaimSheet({
                   >
                     <div className="mb-1.5 flex items-center justify-between gap-2">
                       <span className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                        {label}
+                        {s.claim.assets[key]}
                       </span>
                       <RatingBar dealType={dealType} value={asset.rating} />
                     </div>
@@ -129,7 +139,7 @@ export default function ClaimSheet({
                       {asset.powers.map((p) => (
                         <PowerChip
                           key={p}
-                          name={p}
+                          name={powerName(p, lang)}
                           dealType={dealType}
                           espionage={p === 'Espionage'}
                         />
@@ -140,21 +150,25 @@ export default function ClaimSheet({
               })}
             </div>
 
-            {/* First mission teaser */}
+            {/* Public mission teaser — learning content: BOTH languages,
+                English primary, 中文 below regardless of the toggle. */}
             {publicMission && (
-              <p className="mt-4 flex items-start gap-2 rounded-xl bg-paper-deep p-3 text-base italic text-ink">
+              <div className="mt-4 flex items-start gap-2 rounded-xl bg-paper-deep p-3 text-base italic text-ink">
                 <Megaphone className="mt-0.5 h-5 w-5 shrink-0 text-gold-ink" aria-hidden />
                 <span>
-                  <span className="font-bold not-italic">Your public mission: </span>
+                  <span className="font-bold not-italic">{s.claim.publicMission}</span>
                   {publicMission.text}
+                  {publicMission.textZh && publicMission.textZh !== publicMission.text && (
+                    <span className="mt-1 block not-italic text-ink-soft">
+                      {publicMission.textZh}
+                    </span>
+                  )}
                 </span>
-              </p>
+              </div>
             )}
 
             {alreadySeated && (
-              <p className="mt-3 text-sm font-semibold text-ink-soft">
-                Switching seats will release your current country.
-              </p>
+              <p className="mt-3 text-sm font-semibold text-ink-soft">{s.claim.switching}</p>
             )}
 
             <div className="mt-5 flex flex-col gap-2">
@@ -168,10 +182,10 @@ export default function ClaimSheet({
                 {claiming ? (
                   <span
                     className="h-5 w-5 animate-spin rounded-full border-2 border-paper/40 border-t-paper"
-                    aria-label="Claiming seat"
+                    aria-label={s.claim.claiming}
                   />
                 ) : (
-                  `Claim ${country.name}`
+                  s.claim.confirm(displayName)
                 )}
               </motion.button>
               <button
@@ -179,7 +193,7 @@ export default function ClaimSheet({
                 onClick={onClose}
                 className="min-h-11 rounded-xl text-sm font-bold text-ink-soft transition-colors hover:text-ink"
               >
-                Choose another country
+                {s.claim.chooseAnother}
               </button>
             </div>
           </motion.div>

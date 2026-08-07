@@ -1,10 +1,10 @@
 // Bloc metadata helpers shared by the lobby + endgame surfaces.
 import type { BlocKey } from '@/lib/game-ui'
 
-export const STARTING_BLOC_META: { name: string; key: BlocKey; caption: string }[] = [
-  { name: 'Nuclear Energy', key: 'nuclear', caption: 'Big power, big energy.' },
-  { name: 'Green Energy', key: 'green', caption: 'Clean tech, smart trade.' },
-  { name: 'Fossil Fuel', key: 'fossil', caption: 'Industry giants who need energy.' },
+export const STARTING_BLOC_META: { name: string; key: BlocKey; caption: string; captionZh: string }[] = [
+  { name: 'Nuclear Energy', key: 'nuclear', caption: 'Big power, big energy.', captionZh: '力量大，能源足。' },
+  { name: 'Green Energy', key: 'green', caption: 'Clean tech, smart trade.', captionZh: '清洁科技，智慧贸易。' },
+  { name: 'Fossil Fuel', key: 'fossil', caption: 'Industry giants who need energy.', captionZh: '需要能源的工业大国。' },
 ]
 
 const CUSTOM_KEYS: BlocKey[] = ['plum', 'slate', 'olive', 'clay']

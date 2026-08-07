@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Copy, Eye, EyeOff, KeyRound, UserX } from 'lucide-react'
 import BottomSheet from '@/components/BottomSheet'
+import { useLang, useStrings } from '@/lib/i18n'
+import { countryName } from '@/lib/i18n/shared'
+import lobbyStrings from '@/lib/i18n/lobby'
 
 export interface ClaimedSeat {
   country: string
@@ -38,6 +41,8 @@ export default function AdminPanel({
   onCopyCode,
   onCopyPin,
 }: AdminPanelProps) {
+  const { lang } = useLang()
+  const s = useStrings(lobbyStrings)
   const [pinDraft, setPinDraft] = useState('')
   const [pinRevealed, setPinRevealed] = useState(false)
   const [releaseTarget, setReleaseTarget] = useState<ClaimedSeat | null>(null)
@@ -50,10 +55,10 @@ export default function AdminPanel({
       <div className="h-1 bg-gold" aria-hidden />
       <div className="p-5 md:p-6">
         <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink">
-          Only you can see this
+          {s.admin.onlyYou}
         </p>
         <h2 className="mt-1 font-display text-[26px] leading-8 font-semibold text-ink">
-          Teacher controls
+          {s.admin.title}
         </h2>
 
         {!unlocked ? (
@@ -64,9 +69,7 @@ export default function AdminPanel({
               if (pinDraft.trim()) onPinChange(pinDraft.trim())
             }}
           >
-            <p className="text-base text-ink-soft">
-              Enter your 4-digit admin PIN to manage seats and start the game.
-            </p>
+            <p className="text-base text-ink-soft">{s.admin.pinPrompt}</p>
             <label className="flex items-center gap-2 rounded-xl border border-hairline bg-paper px-3">
               <KeyRound className="h-4 w-4 shrink-0 text-ink-soft" aria-hidden />
               <input
@@ -74,8 +77,8 @@ export default function AdminPanel({
                 onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, '').slice(0, 4))}
                 inputMode="numeric"
                 autoComplete="off"
-                placeholder="Admin PIN"
-                aria-label="Admin PIN"
+                placeholder={s.admin.pinPlaceholder}
+                aria-label={s.admin.pinPlaceholder}
                 className="min-h-12 w-full bg-transparent font-mono text-lg font-semibold tracking-[0.2em] text-ink outline-none placeholder:text-ink-faint"
               />
             </label>
@@ -84,7 +87,7 @@ export default function AdminPanel({
               disabled={pinDraft.length !== 4}
               className="min-h-12 rounded-xl bg-ink text-base font-bold text-paper transition-colors hover:bg-ink/90 disabled:opacity-50"
             >
-              Unlock controls
+              {s.admin.unlock}
             </button>
           </form>
         ) : (
@@ -93,13 +96,13 @@ export default function AdminPanel({
             <div className="mt-4 flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2 rounded-xl bg-paper-deep px-3 py-2">
                 <div>
-                  <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">Room code</p>
+                  <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">{s.admin.roomCode}</p>
                   <p className="font-mono text-2xl font-semibold tracking-[0.12em] text-ink">{code}</p>
                 </div>
                 <button
                   type="button"
                   onClick={onCopyCode}
-                  aria-label="Copy room code"
+                  aria-label={s.admin.copyCode}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-hairline hover:text-ink"
                 >
                   <Copy className="h-4 w-4" />
@@ -107,7 +110,7 @@ export default function AdminPanel({
               </div>
               <div className="flex items-center justify-between gap-2 rounded-xl bg-paper-deep px-3 py-2">
                 <div>
-                  <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">Admin PIN</p>
+                  <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">{s.admin.adminPin}</p>
                   <p className="font-mono text-2xl font-semibold tracking-[0.12em] text-ink">
                     {pinRevealed ? pin : '••••'}
                   </p>
@@ -116,7 +119,7 @@ export default function AdminPanel({
                   <button
                     type="button"
                     onClick={() => setPinRevealed((v) => !v)}
-                    aria-label={pinRevealed ? 'Hide admin PIN' : 'Reveal admin PIN'}
+                    aria-label={pinRevealed ? s.admin.hidePin : s.admin.revealPin}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-hairline hover:text-ink"
                   >
                     {pinRevealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -124,7 +127,7 @@ export default function AdminPanel({
                   <button
                     type="button"
                     onClick={onCopyPin}
-                    aria-label="Copy admin PIN"
+                    aria-label={s.admin.copyPin}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-hairline hover:text-ink"
                   >
                     <Copy className="h-4 w-4" />
@@ -136,32 +139,32 @@ export default function AdminPanel({
             {/* Player list */}
             <div className="mt-5">
               <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                Claimed seats ({claimed.length})
+                {s.admin.claimedSeats(claimed.length)}
               </p>
               <ul className="mt-2 divide-y divide-hairline">
                 {claimed.length === 0 && (
                   <li className="py-3 text-sm font-semibold text-ink-faint">
-                    No countries claimed yet — share the room code!
+                    {s.admin.noClaims}
                   </li>
                 )}
-                {claimed.map((s) => (
+                {claimed.map((seat) => (
                   <motion.li
-                    key={s.country}
+                    key={seat.country}
                     initial={{ y: 8, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ duration: 0.25 }}
                     className="flex min-h-12 items-center justify-between gap-2 py-1.5"
                   >
                     <span className="text-base font-bold text-ink">
-                      <span aria-hidden className="mr-1.5">{s.flag}</span>
-                      {s.country}
-                      <span className="ml-2 font-semibold text-ink-soft">{s.player}</span>
+                      <span aria-hidden className="mr-1.5">{seat.flag}</span>
+                      {countryName(seat.country, lang)}
+                      <span className="ml-2 font-semibold text-ink-soft">{seat.player}</span>
                     </span>
                     <button
                       type="button"
-                      onClick={() => setReleaseTarget(s)}
-                      title={`Release ${s.country}`}
-                      aria-label={`Release ${s.country} (held by ${s.player})`}
+                      onClick={() => setReleaseTarget(seat)}
+                      title={s.admin.release(countryName(seat.country, lang))}
+                      aria-label={`${s.admin.release(countryName(seat.country, lang))} (${seat.player})`}
                       className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-status-failed transition-colors hover:bg-status-failed-soft"
                     >
                       <UserX className="h-4 w-4" />
@@ -185,11 +188,11 @@ export default function AdminPanel({
               transition={canStart && !starting ? { duration: 2.4, repeat: Infinity } : { duration: 0.2 }}
               className="mt-5 flex min-h-16 w-full items-center justify-center rounded-xl bg-ink text-lg font-bold text-paper transition-colors hover:bg-ink/90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {starting ? 'Starting…' : 'Start Round 1 →'}
+              {starting ? s.admin.starting : s.admin.start}
             </motion.button>
             {!canStart && (
               <p className="mt-2 text-sm font-semibold text-ink-soft">
-                Wait for at least 5 countries to be claimed.
+                {s.admin.startNeed}
               </p>
             )}
           </>
@@ -200,13 +203,16 @@ export default function AdminPanel({
       <BottomSheet
         open={releaseTarget !== null}
         onClose={() => setReleaseTarget(null)}
-        title="Release seat"
+        title={s.admin.releaseTitle}
       >
         {releaseTarget && (
           <div className="flex flex-col gap-4">
             <p className="text-lg text-ink">
-              Remove {releaseTarget.player} from {releaseTarget.flag} {releaseTarget.country}? They can
-              re-join.
+              {s.admin.releaseBody(
+                releaseTarget.player,
+                releaseTarget.flag,
+                countryName(releaseTarget.country, lang),
+              )}
             </p>
             <div className="flex flex-col gap-2">
               <button
@@ -218,14 +224,14 @@ export default function AdminPanel({
                 }}
                 className="min-h-12 rounded-xl bg-status-failed text-base font-bold text-paper transition-colors hover:opacity-90 disabled:opacity-60"
               >
-                Yes, release the seat
+                {s.admin.releaseConfirm}
               </button>
               <button
                 type="button"
                 onClick={() => setReleaseTarget(null)}
                 className="min-h-11 rounded-xl text-sm font-bold text-ink-soft transition-colors hover:text-ink"
               >
-                Keep {releaseTarget.player} seated
+                {s.admin.releaseKeep(releaseTarget.player)}
               </button>
             </div>
           </div>
@@ -233,11 +239,9 @@ export default function AdminPanel({
       </BottomSheet>
 
       {/* Start confirm */}
-      <BottomSheet open={startConfirm} onClose={() => setStartConfirm(false)} title="Start the game?">
+      <BottomSheet open={startConfirm} onClose={() => setStartConfirm(false)} title={s.admin.startTitle}>
         <div className="flex flex-col gap-4">
-          <p className="text-lg text-ink">
-            Start the game? Players will see their missions and Round 1 begins.
-          </p>
+          <p className="text-lg text-ink">{s.admin.startBody}</p>
           <div className="flex flex-col gap-2">
             <button
               type="button"
@@ -248,14 +252,14 @@ export default function AdminPanel({
               }}
               className="min-h-12 rounded-xl bg-ink text-base font-bold text-paper transition-colors hover:bg-ink/90 disabled:opacity-60"
             >
-              Yes, start Round 1
+              {s.admin.startConfirm}
             </button>
             <button
               type="button"
               onClick={() => setStartConfirm(false)}
               className="min-h-11 rounded-xl text-sm font-bold text-ink-soft transition-colors hover:text-ink"
             >
-              Not yet
+              {s.admin.startNotYet}
             </button>
           </div>
         </div>

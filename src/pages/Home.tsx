@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent, ClipboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
@@ -25,12 +25,26 @@ import SummitHeader from '@/components/SummitHeader'
 import Footer from '@/components/Footer'
 import { trpc } from '@/providers/trpc'
 import { loadSession, saveSession, clearSession } from '@/lib/session'
+import { clearAdminCreds, saveAdminCreds } from '@/components/admin/admin-utils'
+import { useLang, useStrings } from '@/lib/i18n'
+import { countryName } from '@/lib/i18n/shared'
+import homeStrings from '@/lib/i18n/home'
 import { cn } from '@/lib/utils'
 
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number]
 const SPRING = { type: 'spring', stiffness: 380, damping: 22 } as const
 
 const CODE_LEN = 6
+
+/** Legacy raw-PIN key the lobby used before the JSON admin creds store. */
+const LEGACY_PIN_KEY = 'summit:adminPin'
+
+/** Drop every trace of a previous room (session + admin credentials). */
+function clearAllRoomStorage() {
+  clearSession()
+  clearAdminCreds()
+  localStorage.removeItem(LEGACY_PIN_KEY)
+}
 
 /* ------------------------------------------------------------------ */
 /* 6-cell room code input with auto-advance                            */
@@ -40,11 +54,13 @@ function CodeInput({
   onChange,
   onComplete,
   invalid,
+  letterLabel,
 }: {
   value: string
   onChange: (v: string) => void
   onComplete: () => void
   invalid: boolean
+  letterLabel: (i: number) => string
 }) {
   const refs = useRef<(HTMLInputElement | null)[]>([])
   const chars = value.padEnd(CODE_LEN, ' ').slice(0, CODE_LEN).split('')
@@ -100,7 +116,7 @@ function CodeInput({
             autoCapitalize="characters"
             autoComplete="off"
             maxLength={1}
-            aria-label={`Room code letter ${i + 1}`}
+            aria-label={letterLabel(i + 1)}
             placeholder="_"
             onChange={(e) => setChar(i, e.target.value)}
             onKeyDown={(e) => onKey(i, e)}
@@ -124,6 +140,7 @@ function CodeInput({
 /* ------------------------------------------------------------------ */
 function JoinCard() {
   const navigate = useNavigate()
+  const s = useStrings(homeStrings)
   const [code, setCode] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -142,8 +159,8 @@ function JoinCard() {
     } catch (e) {
       // Show the server's actual reason (duplicate name, game already
       // started, …) instead of masking every failure as "room not found".
-      setError(e instanceof Error ? e.message : 'Room not found — check the code with your teacher.')
-      setShake((s) => s + 1)
+      setError(e instanceof Error ? e.message : s.join.errorFallback)
+      setShake((v) => v + 1)
     }
   }
 
@@ -164,28 +181,34 @@ function JoinCard() {
         <GraduationCap className="h-7 w-7 text-ink" aria-hidden />
       </motion.div>
       <h2 id="join-title" className="font-display text-[26px] leading-8 font-semibold tracking-[-0.01em]">
-        Join your summit
+        {s.join.title}
       </h2>
-      <p className="mt-1 mb-5 text-base text-ink-soft">Get the 6-letter room code from your teacher.</p>
+      <p className="mt-1 mb-5 text-base text-ink-soft">{s.join.subtitle}</p>
 
       <motion.div
         key={shake}
         animate={shake ? { x: [0, -8, 8, -8, 8, 0] } : undefined}
         transition={{ duration: 0.3 }}
       >
-        <label className="mb-1.5 block text-sm font-bold text-ink">Room code</label>
-        <CodeInput value={code} onChange={(v) => { setCode(v); setError(null) }} onComplete={submit} invalid={!!error} />
+        <label className="mb-1.5 block text-sm font-bold text-ink">{s.join.codeLabel}</label>
+        <CodeInput
+          value={code}
+          onChange={(v) => { setCode(v); setError(null) }}
+          onComplete={submit}
+          invalid={!!error}
+          letterLabel={s.join.codeLetter}
+        />
       </motion.div>
       {error && <p className="mt-2 text-sm font-bold text-status-failed">{error}</p>}
 
       <label htmlFor="join-name" className="mt-4 mb-1.5 block text-sm font-bold text-ink">
-        Your name
+        {s.join.nameLabel}
       </label>
       <input
         id="join-name"
         value={name}
         maxLength={20}
-        placeholder="Your name (e.g. Li Wei)"
+        placeholder={s.join.namePlaceholder}
         onChange={(e) => setName(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         className="h-12 w-full rounded-xl border border-hairline bg-paper-deep px-4 text-base text-ink placeholder:text-ink-faint"
@@ -202,10 +225,10 @@ function JoinCard() {
         {join.isPending ? (
           <span className="inline-flex items-center gap-2">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-paper/40 border-t-paper" aria-hidden />
-            Joining…
+            {s.join.joining}
           </span>
         ) : (
-          'Join Room →'
+          s.join.submit
         )}
       </motion.button>
     </motion.section>
@@ -223,6 +246,7 @@ interface CreatedRoom {
 
 function CreateCard() {
   const navigate = useNavigate()
+  const s = useStrings(homeStrings)
   const [teacherName, setTeacherName] = useState('')
   const [created, setCreated] = useState<CreatedRoom | null>(null)
   const [pinRevealed, setPinRevealed] = useState(false)
@@ -241,9 +265,14 @@ function CreateCard() {
 
   const submit = async () => {
     if (create.isPending) return
+    // New game: drop the old room's session + admin creds FIRST, so stale
+    // localStorage can never bounce the teacher back to the previous room.
+    clearAllRoomStorage()
     const res = await create.mutateAsync({ teacherName: teacherName.trim() || 'Teacher' })
     const room: CreatedRoom = { token: res.token, roomCode: res.roomCode, adminPin: res.adminPin }
     saveSession({ token: room.token, roomCode: room.roomCode, role: 'teacher', name: teacherName.trim() || 'Teacher' })
+    // Save the new admin creds so /admin?code= opens without re-typing the PIN.
+    if (room.adminPin) saveAdminCreds({ code: room.roomCode, pin: room.adminPin })
     setCreated(room)
   }
 
@@ -264,20 +293,20 @@ function CreateCard() {
         <Landmark className="h-7 w-7 text-ink" aria-hidden />
       </motion.div>
       <h2 id="create-title" className="font-display text-[26px] leading-8 font-semibold tracking-[-0.01em]">
-        Start a new summit
+        {s.create.title}
       </h2>
       <p className="mt-1 mb-5 text-base text-ink-soft">
-        Create a room for your class. You will get a room code and a secret admin PIN. Keep the PIN for yourself.
+        {s.create.subtitle}
       </p>
 
       <label htmlFor="teacher-name" className="mb-1.5 block text-sm font-bold text-ink">
-        Your name
+        {s.create.nameLabel}
       </label>
       <input
         id="teacher-name"
         value={teacherName}
         maxLength={20}
-        placeholder="Your name (e.g. Ms. Chen)"
+        placeholder={s.create.namePlaceholder}
         onChange={(e) => setTeacherName(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && submit()}
         className="h-12 w-full rounded-xl border border-hairline bg-paper-deep px-4 text-base text-ink placeholder:text-ink-faint"
@@ -290,10 +319,10 @@ function CreateCard() {
         onClick={submit}
         className="mt-5 h-14 w-full rounded-xl border-2 border-ink bg-transparent text-base font-extrabold text-ink transition-colors hover:bg-paper-deep disabled:opacity-40"
       >
-        {create.isPending ? 'Creating…' : 'Create Room'}
+        {create.isPending ? s.create.creating : s.create.submit}
       </motion.button>
       {create.isError && (
-        <p className="mt-2 text-sm font-bold text-status-failed">Could not create the room — please try again.</p>
+        <p className="mt-2 text-sm font-bold text-status-failed">{s.create.error}</p>
       )}
 
       {created && (
@@ -310,12 +339,12 @@ function CreateCard() {
             className="mt-5 rounded-xl border border-hairline bg-paper-deep p-4"
           >
             <motion.div variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}>
-              <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">Room code — share with students</p>
+              <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">{s.create.codeLabel}</p>
               <button
                 type="button"
                 onClick={() => copy(created.roomCode, 'code')}
                 className="mt-1 flex items-center gap-2 font-mono text-[40px] font-semibold tracking-[0.12em] text-ink"
-                title="Tap to copy"
+                title={s.create.tapToCopy}
               >
                 {created.roomCode}
                 {copied === 'code' ? <Check className="h-6 w-6 text-deal-technology" /> : <Copy className="h-6 w-6 text-ink-soft" />}
@@ -324,7 +353,7 @@ function CreateCard() {
 
             {created.adminPin && (
               <motion.div variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }} className="mt-3">
-                <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">Secret admin PIN — teachers only</p>
+                <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">{s.create.pinLabel}</p>
                 <button
                   type="button"
                   onClick={() => (pinRevealed ? copy(created.adminPin!, 'pin') : setPinRevealed(true))}
@@ -332,7 +361,7 @@ function CreateCard() {
                     'mt-1 flex items-center gap-2 font-mono text-2xl font-semibold tracking-[0.12em] text-ink transition-[filter]',
                     !pinRevealed && 'blur-md select-none',
                   )}
-                  title={pinRevealed ? 'Tap to copy' : 'Tap to reveal'}
+                  title={pinRevealed ? s.create.tapToCopy : s.create.tapToReveal}
                 >
                   {created.adminPin}
                   {copied === 'pin' ? <Check className="h-5 w-5 text-deal-technology" /> : <Copy className="h-5 w-5 text-ink-soft" />}
@@ -345,7 +374,7 @@ function CreateCard() {
               className="mt-3 flex items-center gap-1.5 text-sm font-bold text-status-atrisk"
             >
               <AlertTriangle className="h-4 w-4" aria-hidden />
-              Save this PIN — there is no recovery.
+              {s.create.pinWarning}
             </motion.p>
 
             <motion.button
@@ -355,7 +384,7 @@ function CreateCard() {
               onClick={() => navigate(`/admin?code=${created.roomCode}`)}
               className="mt-4 h-12 w-full rounded-xl bg-ink text-base font-extrabold text-paper"
             >
-              Open Admin Dashboard →
+              {s.create.openAdmin}
             </motion.button>
           </motion.div>
         </motion.div>
@@ -367,30 +396,97 @@ function CreateCard() {
 /* ------------------------------------------------------------------ */
 /* Landing page                                                        */
 /* ------------------------------------------------------------------ */
-const META_CHIPS = [
-  { icon: Users, label: '15 countries' },
-  { icon: Clock, label: '2–2.5 hours' },
-  { icon: MessageCircle, label: 'Talk in class, click in the app' },
-]
-
-const STEPS = [
-  { icon: Flag, title: 'Pick a country', body: 'Join the room and choose your country. Each country has different powers.' },
-  { icon: Megaphone, title: 'Say your public mission', body: 'At the start, tell the class your public mission. Keep your other missions secret!' },
-  { icon: Handshake, title: 'Walk, talk, make deals', body: 'Negotiate with classmates in real life. Then send and accept deals in the app — 3 deal actions each round.' },
-  { icon: Trophy, title: 'Score points, win the summit', body: 'Deals give 2–3 points. Missions give 10 points. The teacher ends the game and reveals the winner.' },
-]
-
-const RULES = [
-  { icon: Layers, text: '3 starting blocs — but you can change your bloc every round.' },
-  { icon: Eye, text: "4 spy countries can see everyone's power cards." },
-  { icon: Shield, text: 'Military 3 or less? You earn 3 points on every deal.' },
-  { icon: Timer, text: 'No timers. Your teacher controls the rounds.' },
-]
+const META_ICONS = [Users, Clock, MessageCircle]
+const STEP_ICONS = [Flag, Megaphone, Handshake, Trophy]
+const RULE_ICONS = [Layers, Eye, Shield, Timer]
 
 function ResumeBanner() {
   const navigate = useNavigate()
+  const { lang } = useLang()
+  const s = useStrings(homeStrings)
   const [session, setSession] = useState(loadSession)
-  if (!session || session.role !== 'student') return null
+
+  // Validate the stored token against the server (room may have ended or
+  // the token may be stale after a server reset).
+  const resumeQ = trpc.room.resume.useQuery(
+    { token: session?.token ?? '' },
+    { enabled: !!session, retry: false, staleTime: 30_000 },
+  )
+
+  // Invalid token → silently clear the stored session and hide the banner.
+  useEffect(() => {
+    if (resumeQ.isError) clearAllRoomStorage()
+  }, [resumeQ.isError])
+
+  if (!session || resumeQ.isError) return null
+
+  const status = resumeQ.data?.status
+  const startOver = () => {
+    clearAllRoomStorage()
+    setSession(null)
+  }
+
+  // Room already ended → never send anyone "back to the dashboard".
+  if (status === 'ended') {
+    return (
+      <motion.div
+        initial={{ y: -12, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.3, ease: EASE }}
+        className="border-b border-hairline bg-gold-soft"
+      >
+        <div className="mx-auto flex max-w-[1120px] flex-wrap items-center gap-3 px-4 py-3 md:px-8">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gold-ink">{s.resume.endedTitle}</p>
+            <p className="text-sm text-gold-ink/80">{s.resume.endedBody}</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate('/endgame')}
+              className="rounded-full bg-ink px-4 py-1.5 text-sm font-extrabold text-paper"
+            >
+              {s.resume.viewResults}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                startOver()
+                document.getElementById('get-started')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }}
+              className="text-sm font-bold text-gold-ink underline underline-offset-2"
+            >
+              {s.resume.newGame}
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  const isTeacher = session.role === 'teacher'
+  const welcome = isTeacher
+    ? s.resume.welcomeTeacher(session.roomCode)
+    : session.country
+      ? s.resume.welcomeCountry(session.flag ?? '', countryName(session.country, lang), session.roomCode)
+      : s.resume.welcomeNoCountry(session.roomCode)
+
+  // Route to the right surface for the room's actual status.
+  const destination = isTeacher
+    ? status === 'playing'
+      ? '/admin'
+      : '/lobby'
+    : status === 'playing' && session.country
+      ? '/play'
+      : '/lobby'
+  const cta = isTeacher
+    ? status === 'playing'
+      ? s.resume.backAdmin
+      : s.resume.backLobby
+    : session.country && status === 'playing'
+      ? s.resume.backDashboard
+      : s.resume.backLobby
+
   return (
     <motion.div
       initial={{ y: -12, opacity: 0 }}
@@ -399,25 +495,21 @@ function ResumeBanner() {
       className="border-b border-hairline bg-gold-soft"
     >
       <div className="mx-auto flex max-w-[1120px] flex-wrap items-center gap-3 px-4 py-3 md:px-8">
-        <p className="text-sm font-bold text-gold-ink">
-          {session.country
-            ? `Welcome back! You are ${session.flag ?? ''} ${session.country} in room ${session.roomCode}.`
-            : `Welcome back! You are in room ${session.roomCode} — pick your country.`}
-        </p>
+        <p className="text-sm font-bold text-gold-ink">{welcome}</p>
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate(session.country ? '/play' : '/lobby')}
+            onClick={() => navigate(destination)}
             className="rounded-full bg-ink px-4 py-1.5 text-sm font-extrabold text-paper"
           >
-            {session.country ? 'Back to my dashboard →' : 'Back to the lobby →'}
+            {cta}
           </button>
           <button
             type="button"
-            onClick={() => { clearSession(); setSession(null) }}
+            onClick={startOver}
             className="text-sm font-bold text-gold-ink underline underline-offset-2"
           >
-            Not you? Start over
+            {s.resume.startOver}
           </button>
         </div>
       </div>
@@ -427,7 +519,8 @@ function ResumeBanner() {
 
 export default function Home() {
   const reduceMotion = useReducedMotion()
-  const titleWords = ['UN', 'Summit:', 'Zhuhai']
+  const s = useStrings(homeStrings)
+  const titleWords = s.heroWords
 
   return (
     <div className="min-h-[100dvh]">
@@ -454,7 +547,7 @@ export default function Home() {
               className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft"
             >
               <Sparkle className="h-4 w-4 text-gold" aria-hidden />
-              A classroom negotiation game · Zhuhai
+              {s.heroEyebrow}
               <Sparkle className="h-4 w-4 text-gold" aria-hidden />
             </motion.p>
             <h1 className="mt-3 font-display text-[44px] font-bold leading-[48px] tracking-[-0.02em] lg:text-[64px] lg:leading-[64px]">
@@ -477,21 +570,24 @@ export default function Home() {
               transition={{ duration: 0.45, ease: EASE, delay: 0.4 }}
               className="mt-4 max-w-md text-lg leading-[30px] text-ink-soft"
             >
-              You are a country. Talk, trade, and make deals with your classmates. Complete your secret missions. Win the summit.
+              {s.heroSubtitle}
             </motion.p>
             <div className="mt-5 flex flex-wrap gap-2">
-              {META_CHIPS.map((chip, i) => (
-                <motion.span
-                  key={chip.label}
-                  initial={{ scale: 0.8, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ ...SPRING, delay: 0.55 + i * 0.08 }}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-card px-3.5 py-1.5 text-sm font-bold text-ink"
-                >
-                  <chip.icon className="h-4 w-4 text-ink-soft" aria-hidden />
-                  {chip.label}
-                </motion.span>
-              ))}
+              {s.metaChips.map((label, i) => {
+                const Icon = META_ICONS[i % META_ICONS.length]
+                return (
+                  <motion.span
+                    key={label}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ ...SPRING, delay: 0.55 + i * 0.08 }}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-card px-3.5 py-1.5 text-sm font-bold text-ink"
+                  >
+                    <Icon className="h-4 w-4 text-ink-soft" aria-hidden />
+                    {label}
+                  </motion.span>
+                )
+              })}
             </div>
           </div>
           <motion.div
@@ -502,7 +598,7 @@ export default function Home() {
           >
             <img
               src="/hero-illustration.png"
-              alt="Students negotiating around a Model-UN roundtable"
+              alt={s.heroImgAlt}
               className="h-full w-full object-cover"
             />
           </motion.div>
@@ -510,7 +606,7 @@ export default function Home() {
       </section>
 
       {/* ---------------- Action cards ---------------- */}
-      <section className="mx-auto grid max-w-[1120px] gap-6 px-4 pb-12 md:px-8 lg:grid-cols-2 lg:pb-16">
+      <section id="get-started" className="mx-auto grid max-w-[1120px] scroll-mt-20 gap-6 px-4 pb-12 md:px-8 lg:grid-cols-2 lg:pb-16">
         <JoinCard />
         <CreateCard />
       </section>
@@ -524,34 +620,37 @@ export default function Home() {
           className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-[0.06]"
         />
         <div className="relative mx-auto max-w-[1120px] px-4 py-12 md:px-8 lg:py-16">
-          <h2 className="text-center font-display text-[26px] font-semibold tracking-[-0.01em]">How to play</h2>
-          <p className="mt-1 text-center text-base text-ink-soft">Four simple steps.</p>
+          <h2 className="text-center font-display text-[26px] font-semibold tracking-[-0.01em]">{s.howToPlay}</h2>
+          <p className="mt-1 text-center text-base text-ink-soft">{s.howToPlaySub}</p>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {STEPS.map((step, i) => (
-              <motion.div
-                key={step.title}
-                initial={{ y: 24, opacity: 0 }}
-                whileInView={{ y: 0, opacity: 1 }}
-                viewport={{ once: true, amount: 0.25 }}
-                transition={{ duration: 0.45, ease: EASE, delay: i * 0.1 }}
-                className="rounded-2xl border border-hairline bg-card p-5 shadow-card"
-              >
-                <div className="flex items-center justify-between">
-                  <motion.span
-                    initial={{ scale: 0.6 }}
-                    whileInView={{ scale: 1 }}
-                    viewport={{ once: true, amount: 0.25 }}
-                    transition={{ ...SPRING, delay: i * 0.1 }}
-                    className="flex h-12 w-12 items-center justify-center rounded-full bg-gold-soft font-display text-[32px] font-semibold text-gold-ink"
-                  >
-                    {i + 1}
-                  </motion.span>
-                  <step.icon className="h-5 w-5 text-ink-faint" aria-hidden />
-                </div>
-                <h3 className="mt-3 text-[19px] font-extrabold leading-[26px]">{step.title}</h3>
-                <p className="mt-1 text-base leading-[26px] text-ink-soft">{step.body}</p>
-              </motion.div>
-            ))}
+            {s.steps.map((step, i) => {
+              const Icon = STEP_ICONS[i % STEP_ICONS.length]
+              return (
+                <motion.div
+                  key={step.title}
+                  initial={{ y: 24, opacity: 0 }}
+                  whileInView={{ y: 0, opacity: 1 }}
+                  viewport={{ once: true, amount: 0.25 }}
+                  transition={{ duration: 0.45, ease: EASE, delay: i * 0.1 }}
+                  className="rounded-2xl border border-hairline bg-card p-5 shadow-card"
+                >
+                  <div className="flex items-center justify-between">
+                    <motion.span
+                      initial={{ scale: 0.6 }}
+                      whileInView={{ scale: 1 }}
+                      viewport={{ once: true, amount: 0.25 }}
+                      transition={{ ...SPRING, delay: i * 0.1 }}
+                      className="flex h-12 w-12 items-center justify-center rounded-full bg-gold-soft font-display text-[32px] font-semibold text-gold-ink"
+                    >
+                      {i + 1}
+                    </motion.span>
+                    <Icon className="h-5 w-5 text-ink-faint" aria-hidden />
+                  </div>
+                  <h3 className="mt-3 text-[19px] font-extrabold leading-[26px]">{step.title}</h3>
+                  <p className="mt-1 text-base leading-[26px] text-ink-soft">{step.body}</p>
+                </motion.div>
+              )
+            })}
           </div>
         </div>
       </section>
@@ -565,19 +664,22 @@ export default function Home() {
           transition={{ duration: 0.4, ease: EASE }}
           className="grid gap-4 rounded-2xl border border-hairline bg-card p-5 shadow-card sm:grid-cols-2 lg:grid-cols-4"
         >
-          {RULES.map((rule, i) => (
-            <motion.div
-              key={rule.text}
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              viewport={{ once: true, amount: 0.3 }}
-              transition={{ duration: 0.3, delay: i * 0.07 }}
-              className="flex items-start gap-2.5"
-            >
-              <rule.icon className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />
-              <p className="text-sm font-semibold leading-5 text-ink-soft">{rule.text}</p>
-            </motion.div>
-          ))}
+          {s.rules.map((text, i) => {
+            const Icon = RULE_ICONS[i % RULE_ICONS.length]
+            return (
+              <motion.div
+                key={text}
+                initial={{ opacity: 0 }}
+                whileInView={{ opacity: 1 }}
+                viewport={{ once: true, amount: 0.3 }}
+                transition={{ duration: 0.3, delay: i * 0.07 }}
+                className="flex items-start gap-2.5"
+              >
+                <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gold" aria-hidden />
+                <p className="text-sm font-semibold leading-5 text-ink-soft">{text}</p>
+              </motion.div>
+            )
+          })}
         </motion.div>
       </section>
 

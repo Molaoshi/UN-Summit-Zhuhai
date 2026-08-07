@@ -1,6 +1,9 @@
 import { motion } from 'framer-motion'
 import { Check, Eye, Handshake } from 'lucide-react'
 import type { CountryData } from '@contracts/game-data'
+import { useLang, useStrings } from '@/lib/i18n'
+import { countryName } from '@/lib/i18n/shared'
+import lobbyStrings from '@/lib/i18n/lobby'
 import { DEAL_TYPES } from '@/lib/game-ui'
 import type { DealType } from '@/lib/game-ui'
 import { cn } from '@/lib/utils'
@@ -20,11 +23,11 @@ const ASSET_TO_DEAL: Record<string, DealType> = {
   tech: 'technology',
 }
 
-const ASSET_ROWS: { key: string; short: string }[] = [
-  { key: 'military', short: 'MIL' },
-  { key: 'resources', short: 'RES' },
-  { key: 'energy', short: 'ENG' },
-  { key: 'tech', short: 'TEC' },
+const ASSET_ROWS: { key: keyof typeof lobbyStrings.en.seat.assetShort }[] = [
+  { key: 'military' },
+  { key: 'resources' },
+  { key: 'energy' },
+  { key: 'tech' },
 ]
 
 /** Tiny 10-segment rating preview (2×8px segments). */
@@ -56,7 +59,10 @@ export interface SeatCardProps {
 
 /** One country seat in the lobby seat map. */
 export default function SeatCard({ seat, data, mine, pulse = false, staggerDelay = 0, onTake }: SeatCardProps) {
+  const { lang } = useLang()
+  const s = useStrings(lobbyStrings)
   const taken = !mine && seat.claimedBy !== null
+  const displayName = countryName(seat.country, lang)
   return (
     <motion.div
       initial={{ y: 24, opacity: 0 }}
@@ -87,26 +93,26 @@ export default function SeatCard({ seat, data, mine, pulse = false, staggerDelay
             {seat.flag}
           </span>
           <h3 className={cn('text-lg font-extrabold leading-6', taken ? 'text-ink-soft' : 'text-ink')}>
-            {seat.country}
+            {displayName}
           </h3>
         </div>
         <div className="flex flex-col items-end gap-1">
           {data.hasEspionage && (
             <span
-              title="Can spy on other countries"
+              title={s.seat.espionageTitle}
               className="inline-flex items-center gap-1 rounded-full bg-gold-soft px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.08em] text-gold-ink"
             >
               <Eye className="h-3 w-3" aria-hidden />
-              Espionage
+              {s.seat.espionage}
             </span>
           )}
           {data.freeCrossBloc && (
             <span
-              title="Earns 3 pts on every deal"
+              title={s.seat.freeTraderTitle}
               className="inline-flex items-center gap-1 rounded-full bg-status-ontrack-soft px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.08em] text-status-ontrack"
             >
               <Handshake className="h-3 w-3" aria-hidden />
-              Free Trader
+              {s.seat.freeTrader}
             </span>
           )}
         </div>
@@ -114,16 +120,16 @@ export default function SeatCard({ seat, data, mine, pulse = false, staggerDelay
 
       {/* Asset rating previews */}
       <div className={cn('flex flex-col gap-1.5', taken && 'opacity-45')}>
-        {ASSET_ROWS.map(({ key, short }) => {
+        {ASSET_ROWS.map(({ key }) => {
           const dealType = ASSET_TO_DEAL[key]
-          const rating = data.assets[key as keyof CountryData['assets']].rating
+          const rating = data.assets[key].rating
           return (
             <div key={key} className="flex items-center justify-between gap-2">
               <span
                 className="w-8 text-xs font-extrabold uppercase tracking-[0.10em]"
                 style={{ color: DEAL_TYPES[dealType].color }}
               >
-                {short}
+                {s.seat.assetShort[key]}
               </span>
               <MiniRating dealType={dealType} value={rating} />
             </div>
@@ -141,11 +147,11 @@ export default function SeatCard({ seat, data, mine, pulse = false, staggerDelay
             className="flex min-h-12 items-center gap-2 text-base font-bold text-ink"
           >
             <Check className="h-5 w-5 shrink-0 text-gold-ink" aria-hidden />
-            You are {seat.flag} {seat.country}
+            {s.seat.youAre(seat.flag, displayName)}
           </motion.p>
         ) : taken ? (
           <p className="flex min-h-12 items-center text-base font-semibold text-ink-soft">
-            Claimed by {seat.claimedBy}
+            {s.seat.claimedBy(seat.claimedBy ?? '')}
           </p>
         ) : (
           <motion.button
@@ -154,7 +160,7 @@ export default function SeatCard({ seat, data, mine, pulse = false, staggerDelay
             onClick={onTake}
             className="min-h-12 w-full rounded-xl border-2 border-ink text-base font-bold text-ink transition-colors hover:bg-paper-deep"
           >
-            Take this seat
+            {s.seat.take}
           </motion.button>
         )}
       </div>

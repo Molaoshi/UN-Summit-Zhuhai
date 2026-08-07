@@ -9,12 +9,16 @@ import BottomSheet from '@/components/BottomSheet'
 import Toast from '@/components/Toast'
 import AdminPanel from '@/components/lobby/AdminPanel'
 import ClaimSheet from '@/components/lobby/ClaimSheet'
+import CountryPicker from '@/components/lobby/CountryPicker'
 import RoomBanner from '@/components/lobby/RoomBanner'
 import SeatCard from '@/components/lobby/SeatCard'
 import type { SeatInfo } from '@/components/lobby/SeatCard'
 import { STARTING_BLOC_META } from '@/components/lobby/bloc-meta'
 import { clearAdminCreds, loadAdminCreds, saveAdminCreds } from '@/components/admin/admin-utils'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { useLang, useStrings } from '@/lib/i18n'
+import { blocName, countryName, sharedStrings } from '@/lib/i18n/shared'
+import lobbyStrings from '@/lib/i18n/lobby'
 import { clearSession, loadSession, saveSession } from '@/lib/session'
 import { BLOCS } from '@/lib/game-ui'
 import { trpc } from '@/providers/trpc'
@@ -29,6 +33,9 @@ function takerFromMessage(message: string): string | null {
 
 export default function Lobby() {
   const navigate = useNavigate()
+  const { lang } = useLang()
+  const s = useStrings(lobbyStrings)
+  const shared = useStrings(sharedStrings)
   const [session, setSession] = useState(loadSession)
   const isDesktop = useMediaQuery('(min-width: 1024px)')
   const isAdmin = session?.role === 'teacher'
@@ -49,7 +56,13 @@ export default function Lobby() {
 
   const stateQ = trpc.lobby.state.useQuery(
     { token: session?.token },
-    { enabled: !!session, refetchInterval: 3500, retry: 1 },
+    {
+      enabled: !!session,
+      retry: 1,
+      // Stop polling once the room has ended (the effect below navigates away).
+      refetchInterval: (query) =>
+        (query.state.data as { status?: string } | undefined)?.status === 'ended' ? false : 3500,
+    },
   )
   const data = stateQ.data
 
@@ -115,8 +128,8 @@ export default function Lobby() {
   const copyCode = useCallback(() => {
     if (!session) return
     void navigator.clipboard?.writeText(session.roomCode).catch(() => {})
-    setToast('Code copied ✓')
-  }, [session])
+    setToast(s.toast.codeCopied)
+  }, [session, s])
 
   const openClaim = (country: string) => {
     setConflictName(null)
@@ -140,7 +153,7 @@ export default function Lobby() {
       saveSession({ ...session, country: claimCountry, flag: country?.flag })
       setSession(loadSession())
       setClaimCountry(null)
-      setToast(`Welcome, delegate of ${claimCountry} ✓`)
+      setToast(s.toast.welcome(countryName(claimCountry, lang)))
       if (country) {
         const blocKey = STARTING_BLOC_META.find((b) => b.name === country.startingBloc)?.key ?? 'nuclear'
         confetti({
@@ -154,9 +167,9 @@ export default function Lobby() {
       }
       void stateQ.refetch()
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Could not claim that seat.'
+      const message = e instanceof Error ? e.message : s.toast.claimFailed
       if (message.includes('already taken')) {
-        setConflictName(takerFromMessage(message) ?? 'Someone')
+        setConflictName(takerFromMessage(message) ?? s.claim.someone)
         void stateQ.refetch()
       } else {
         setClaimCountry(null)
@@ -169,10 +182,10 @@ export default function Lobby() {
     if (!session || !pin) return
     try {
       await release.mutateAsync({ code: session.roomCode, pin, country })
-      setToast(`${country} released ✓`)
+      setToast(s.toast.released(countryName(country, lang)))
       void stateQ.refetch()
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Could not release that seat.'
+      const message = e instanceof Error ? e.message : s.toast.releaseFailed
       if (message.toLowerCase().includes('pin')) {
         setPin('')
         localStorage.removeItem(PIN_KEY)
@@ -186,10 +199,10 @@ export default function Lobby() {
     if (!session || !pin || startGame.isPending) return
     try {
       await startGame.mutateAsync({ code: session.roomCode, pin })
-      setToast('The summit has begun!')
+      setToast(s.toast.started)
       navigate('/admin', { replace: true })
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Could not start the game.'
+      const message = e instanceof Error ? e.message : s.toast.startFailed
       if (message.toLowerCase().includes('pin')) {
         setPin('')
         localStorage.removeItem(PIN_KEY)
@@ -202,28 +215,38 @@ export default function Lobby() {
   if (!session) return null
 
   const adminPanel = (
-    <AdminPanel
-      code={session.roomCode}
-      claimed={claimedSeats}
-      canStart={claimedCount >= 5}
-      pin={pin}
-      onPinChange={(p) => {
-        setPin(p)
-        localStorage.setItem(PIN_KEY, p)
-        // Keep the Admin dashboard's JSON credential store in sync so the
-        // teacher is never locked out after pressing Start.
-        saveAdminCreds({ code: session.roomCode, pin: p })
-      }}
-      releasing={release.isPending}
-      starting={startGame.isPending}
-      onRelease={handleRelease}
-      onStart={handleStart}
-      onCopyCode={copyCode}
-      onCopyPin={() => {
-        void navigator.clipboard?.writeText(pin).catch(() => {})
-        setToast('PIN copied ✓')
-      }}
-    />
+    <>
+      <AdminPanel
+        code={session.roomCode}
+        claimed={claimedSeats}
+        canStart={claimedCount >= 5}
+        pin={pin}
+        onPinChange={(p) => {
+          setPin(p)
+          localStorage.setItem(PIN_KEY, p)
+          // Keep the Admin dashboard's JSON credential store in sync so the
+          // teacher is never locked out after pressing Start.
+          saveAdminCreds({ code: session.roomCode, pin: p })
+        }}
+        releasing={release.isPending}
+        starting={startGame.isPending}
+        onRelease={handleRelease}
+        onStart={handleStart}
+        onCopyCode={copyCode}
+        onCopyPin={() => {
+          void navigator.clipboard?.writeText(pin).catch(() => {})
+          setToast(s.toast.pinCopied)
+        }}
+      />
+      <CountryPicker
+        code={session.roomCode}
+        pin={pin}
+        activeCountries={data?.activeCountries ?? []}
+        canEdit={data?.status === 'lobby'}
+        onToast={setToast}
+        onSaved={() => void stateQ.refetch()}
+      />
+    </>
   )
 
   return (
@@ -231,7 +254,7 @@ export default function Lobby() {
       <SummitHeader
         variant="game"
         roomCode={session.roomCode}
-        phase="LOBBY"
+        phase={shared.phase.lobby}
         onCopyRoomCode={copyCode}
       />
 
@@ -239,7 +262,7 @@ export default function Lobby() {
         <RoomBanner
           code={session.roomCode}
           claimed={claimedCount}
-          total={seats.length || 15}
+          total={seats.length || (data?.activeCountries.length ?? 15)}
           isAdmin={!!isAdmin}
           onCopy={copyCode}
         />
@@ -258,8 +281,11 @@ export default function Lobby() {
             />
             <div className="relative flex flex-col gap-8">
               {STARTING_BLOC_META.map((bloc, bi) => {
+                // Seats are already filtered to the room's active countries.
                 const blocSeats = seats.filter((s) => s.startingBloc === bloc.name)
+                if (blocSeats.length === 0) return null
                 const blocClaimed = blocSeats.filter((s) => s.claimedBy !== null).length
+                const label = blocName(bloc.name, lang)
                 return (
                   <motion.section
                     key={bloc.name}
@@ -278,14 +304,16 @@ export default function Lobby() {
                           style={{ backgroundColor: BLOCS[bloc.key].color }}
                           aria-hidden
                         />
-                        {bloc.name}
+                        {label}
                       </span>
                       <h2 className="font-display text-[26px] leading-8 font-semibold text-ink">
-                        {bloc.name}
+                        {label}
                       </h2>
-                      <span className="text-sm font-semibold text-ink-soft">{bloc.caption}</span>
+                      <span className="text-sm font-semibold text-ink-soft">
+                        {lang === 'zh' ? bloc.captionZh : bloc.caption}
+                      </span>
                       <span className="ml-auto text-sm font-semibold text-ink-soft">
-                        {blocClaimed}/{blocSeats.length || 5} claimed
+                        {s.blocClaimed(blocClaimed, blocSeats.length)}
                       </span>
                     </div>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -318,10 +346,7 @@ export default function Lobby() {
                   className="flex items-start gap-3 rounded-2xl border border-hairline bg-card p-5"
                 >
                   <Info className="mt-0.5 h-6 w-6 shrink-0 text-ink-faint" aria-hidden />
-                  <p className="text-lg leading-7 text-ink-soft">
-                    Take your time — tap a country to see its powers before you choose. Once you claim
-                    a seat, only the teacher can change it.
-                  </p>
+                  <p className="text-lg leading-7 text-ink-soft">{s.seatingNote}</p>
                 </motion.div>
               )}
             </div>
@@ -350,12 +375,12 @@ export default function Lobby() {
             animate={{ scale: 1 }}
             transition={{ type: 'spring', stiffness: 380, damping: 22, delay: 0.4 }}
             onClick={() => setAdminSheetOpen(true)}
-            aria-label="Open teacher controls"
+            aria-label={s.openTeacherControls}
             className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-gold text-ink shadow-raised"
           >
             <Settings className="h-6 w-6" />
           </motion.button>
-          <BottomSheet open={adminSheetOpen} onClose={() => setAdminSheetOpen(false)} title="Teacher controls">
+          <BottomSheet open={adminSheetOpen} onClose={() => setAdminSheetOpen(false)} title={s.admin.title}>
             {adminPanel}
           </BottomSheet>
         </>

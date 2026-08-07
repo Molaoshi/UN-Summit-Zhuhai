@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Copy, Users } from 'lucide-react'
+import { useStrings } from '@/lib/i18n'
+import lobbyStrings from '@/lib/i18n/lobby'
 
 /** Tween a displayed number towards `value` over 500ms on change. */
 function useCountUp(value: number, duration = 500): number {
@@ -34,6 +36,7 @@ export interface RoomBannerProps {
 
 /** Wide strip under the header: room code, joined counter, waiting hint. */
 export default function RoomBanner({ code, claimed, total, isAdmin, onCopy }: RoomBannerProps) {
+  const s = useStrings(lobbyStrings)
   const shown = useCountUp(claimed)
   const pct = Math.round((claimed / Math.max(1, total)) * 100)
   const allFilled = claimed >= total
@@ -46,7 +49,7 @@ export default function RoomBanner({ code, claimed, total, isAdmin, onCopy }: Ro
     >
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">Room code</p>
+          <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">{s.banner.codeLabel}</p>
           <div className="mt-1 flex items-center gap-2">
             <span className="font-mono text-[32px] font-semibold leading-9 tracking-[0.12em] text-ink">
               {code}
@@ -54,8 +57,8 @@ export default function RoomBanner({ code, claimed, total, isAdmin, onCopy }: Ro
             <button
               type="button"
               onClick={onCopy}
-              aria-label="Copy room code"
-              title="Copy room code"
+              aria-label={s.banner.copyCode}
+              title={s.banner.copyCode}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full text-ink-soft transition-colors hover:bg-paper-deep hover:text-ink"
             >
               <Copy className="h-5 w-5" />
@@ -66,7 +69,7 @@ export default function RoomBanner({ code, claimed, total, isAdmin, onCopy }: Ro
         <div className="min-w-[220px]">
           <p className="flex items-center gap-2 text-sm font-bold text-ink">
             <Users className="h-4 w-4 text-ink-soft" aria-hidden />
-            {shown} of {total} countries claimed
+            {s.banner.claimed(shown, total)}
           </p>
           <div className="mt-2 flex items-center gap-1" aria-hidden>
             {Array.from({ length: 10 }, (_, i) => (
@@ -89,10 +92,10 @@ export default function RoomBanner({ code, claimed, total, isAdmin, onCopy }: Ro
           className="inline-flex w-fit items-center rounded-full bg-gold-soft px-4 py-2 text-sm font-extrabold text-gold-ink"
         >
           {allFilled
-            ? 'All seats filled! Waiting for the teacher…'
+            ? s.banner.allFilled
             : isAdmin
-              ? 'You are the teacher'
-              : 'Waiting for the teacher to start…'}
+              ? s.banner.youAreTeacher
+              : s.banner.waiting}
         </motion.span>
       </div>
     </motion.section>
