@@ -10,6 +10,9 @@ import {
   countryStartingBloc,
 } from '@/components/admin/admin-utils'
 import type { AdminState } from '@/components/admin/admin-utils'
+import { useLang, useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
+import { blocName, countryName } from '@/lib/i18n/shared'
 import { cn } from '@/lib/utils'
 
 export interface BlocMonitorProps {
@@ -20,6 +23,8 @@ export interface BlocMonitorProps {
 
 /** Live bloc monitor: current blocs, biggest-bloc crown, defection marks, history. */
 export default function BlocMonitor({ state, customBlocs, started }: BlocMonitorProps) {
+  const { lang } = useLang()
+  const t = useStrings(adminStrings).blocs
   const [historyOpen, setHistoryOpen] = useState(false)
   const [openRound, setOpenRound] = useState<number | null>(null)
 
@@ -47,11 +52,11 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
   if (!started) {
     return (
       <section className="rounded-2xl border border-hairline bg-card p-6 shadow-card">
-        <h2 className="font-display text-2xl font-semibold text-ink">Blocs</h2>
+        <h2 className="font-display text-2xl font-semibold text-ink">{t.title}</h2>
         <EmptyState
           icon={Users}
-          title="Starting blocs"
-          body="Countries begin in their three starting blocs. Alliance shifts appear here at each round end."
+          title={t.emptyTitle}
+          body={t.emptyBody}
           className="py-8"
         />
       </section>
@@ -60,7 +65,7 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
 
   return (
     <section className="rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-6">
-      <h2 className="mb-4 font-display text-2xl font-semibold text-ink">Blocs</h2>
+      <h2 className="mb-4 font-display text-2xl font-semibold text-ink">{t.title}</h2>
       <div className="space-y-4">
         {groups.map((g) => {
           const isBiggest = g.members.length === biggestSize && groups.length > 1
@@ -75,10 +80,8 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
               )}
             >
               <div className="mb-3 flex flex-wrap items-center gap-3">
-                <BlocBadge bloc={blocKeyFor(g.name, customBlocs)} name={g.name} size="md" showIcon />
-                <span className="text-lg font-extrabold text-ink">
-                  {g.members.length} {g.members.length === 1 ? 'member' : 'members'}
-                </span>
+                <BlocBadge bloc={blocKeyFor(g.name, customBlocs)} name={blocName(g.name, lang)} size="md" showIcon />
+                <span className="text-lg font-extrabold text-ink">{t.members(g.members.length)}</span>
                 {isBiggest && (
                   <motion.span
                     initial={{ scale: 0 }}
@@ -87,7 +90,7 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
                     className="inline-flex items-center gap-1 rounded-full bg-gold-soft px-2.5 py-0.5 text-xs font-extrabold text-gold-ink ring-1 ring-gold"
                   >
                     <Crown className="h-3.5 w-3.5" aria-hidden />
-                    Biggest bloc
+                    {t.biggest}
                   </motion.span>
                 )}
               </div>
@@ -102,9 +105,9 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
                       className="inline-flex items-center gap-1.5 rounded-full border border-hairline bg-card px-3 py-1.5 text-sm font-bold text-ink"
                     >
                       <span aria-hidden>{countryFlag(country)}</span>
-                      {country}
+                      {countryName(country, lang)}
                       {defected && (
-                        <span title={`Started in ${countryStartingBloc(country)}`}>
+                        <span title={t.startedIn(blocName(countryStartingBloc(country), lang))}>
                           <ArrowLeftRight className="h-3.5 w-3.5 text-gold-ink" aria-hidden />
                         </span>
                       )}
@@ -126,7 +129,7 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
             aria-expanded={historyOpen}
             className="flex w-full items-center justify-between text-sm font-extrabold uppercase tracking-[0.10em] text-ink-soft transition-colors hover:text-ink"
           >
-            Bloc history ({historyRounds.length} {historyRounds.length === 1 ? 'round' : 'rounds'})
+            {t.history(historyRounds.length)}
             <ChevronDown
               className={cn('h-4 w-4 transition-transform', historyOpen && 'rotate-180')}
               aria-hidden
@@ -152,10 +155,10 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
                     <div className="space-y-2 border-t border-hairline px-3 py-2.5">
                       {blocs.map(([name, members]) => (
                         <div key={name} className="flex flex-wrap items-center gap-2">
-                          <BlocBadge bloc={blocKeyFor(name, customBlocs)} name={name} size="sm" />
+                          <BlocBadge bloc={blocKeyFor(name, customBlocs)} name={blocName(name, lang)} size="sm" />
                           <span className="text-sm text-ink-soft">
                             {members
-                              .map((m) => `${countryFlag(m)} ${m}`)
+                              .map((m) => `${countryFlag(m)} ${countryName(m, lang)}`)
                               .join(' · ')}
                           </span>
                         </div>

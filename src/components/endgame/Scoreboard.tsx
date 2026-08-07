@@ -3,6 +3,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown, Globe, Lock, Star } from 'lucide-react'
 import BlocBadge from '@/components/BlocBadge'
 import { blocKeyFor, customBlocNames } from '@/components/lobby/bloc-meta'
+import { useLang, useStrings } from '@/lib/i18n'
+import { endgameStrings } from '@/lib/i18n/endgame'
+import type { EndgameStrings } from '@/lib/i18n/endgame'
+import { blocName, countryName } from '@/lib/i18n/shared'
 import { cn } from '@/lib/utils'
 import CountUp from './CountUp'
 import type { FinalDeal, FinalMission, FinalResults, ScoreRow } from './types'
@@ -10,14 +14,16 @@ import type { FinalDeal, FinalMission, FinalResults, ScoreRow } from './types'
 const SPRING = { type: 'spring', stiffness: 380, damping: 22 } as const
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number]
 
-const SLOT_META: Record<FinalMission['slot'], { label: string; icon: typeof Globe }> = {
-  public: { label: 'Public mission', icon: Globe },
-  private: { label: 'Private mission', icon: Lock },
-  bonus: { label: 'Bonus mission', icon: Star },
+type S = EndgameStrings['scoreboard']
+
+const SLOT_ICONS: Record<FinalMission['slot'], typeof Globe> = {
+  public: Globe,
+  private: Lock,
+  bonus: Star,
 }
 
 /** "6 deals signed — 4 in-bloc (+3 each), 2 cross-bloc (+2 each)" */
-function dealSummary(country: string, deals: FinalDeal[]): string {
+function dealSummary(country: string, deals: FinalDeal[], t: S): string {
   const mine = deals.filter(
     (d) => d.status === 'accepted' && (d.initiatorCountry === country || d.targetCountry === country),
   )
@@ -25,20 +31,16 @@ function dealSummary(country: string, deals: FinalDeal[]): string {
     d.initiatorCountry === country ? (d.initiatorPoints ?? 0) : (d.targetPoints ?? 0)
   const inBloc = mine.filter((d) => pointsOf(d) >= 3).length
   const cross = mine.length - inBloc
-  if (mine.length === 0) return 'No deals signed.'
-  const parts = [`${mine.length} deal${mine.length === 1 ? '' : 's'} signed`]
-  if (inBloc > 0) parts.push(`${inBloc} in-bloc (+3 each)`)
-  if (cross > 0) parts.push(`${cross} cross-bloc (+2 each)`)
-  return parts.join(' — ')
+  if (mine.length === 0) return t.dealSummary.none
+  return t.dealSummary.summary(mine.length, inBloc, cross)
 }
 
 /** Expandable per-country breakdown: missions, deal summary, adjustments. */
-function Breakdown({ row, deals }: { row: ScoreRow; deals: FinalDeal[] }) {
+function Breakdown({ row, deals, t }: { row: ScoreRow; deals: FinalDeal[]; t: S }) {
   return (
     <div className="flex flex-col gap-2 px-4 pb-4 pt-1 md:px-6">
       {row.missions.map((m, i) => {
-        const meta = SLOT_META[m.slot]
-        const Icon = meta.icon
+        const Icon = SLOT_ICONS[m.slot]
         const done = m.status === 'completed'
         return (
           <motion.div
@@ -51,10 +53,11 @@ function Breakdown({ row, deals }: { row: ScoreRow; deals: FinalDeal[] }) {
             <Icon className="mt-0.5 h-4 w-4 shrink-0 text-ink-soft" aria-hidden />
             <div className="min-w-0 flex-1">
               <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                {meta.label}
-                {m.overridden && <span className="ml-2 normal-case tracking-normal">· teacher override</span>}
+                {t.slots[m.slot]}
+                {m.overridden && <span className="ml-2 normal-case tracking-normal">· {t.teacherOverride}</span>}
               </p>
               <p className="text-base leading-6 text-ink">{m.text}</p>
+              <p className="text-sm leading-5 text-ink-soft">{m.textZh}</p>
             </div>
             <span
               className={cn(
@@ -67,7 +70,7 @@ function Breakdown({ row, deals }: { row: ScoreRow; deals: FinalDeal[] }) {
                 style={{ backgroundColor: done ? '#4F7A52' : '#A94438' }}
                 aria-hidden
               />
-              {done ? 'Completed +10' : 'Failed +0'}
+              {done ? t.completed : t.failed}
             </span>
           </motion.div>
         )
@@ -78,21 +81,17 @@ function Breakdown({ row, deals }: { row: ScoreRow; deals: FinalDeal[] }) {
         transition={{ duration: 0.25, delay: 0.15 }}
         className="text-sm font-semibold text-ink-soft"
       >
-        {dealSummary(row.country, deals)}
-        {row.adjustments !== 0 && (
-          <span className="ml-2">
-            · Teacher adjustments: {row.adjustments > 0 ? `+${row.adjustments}` : row.adjustments} pts
-          </span>
-        )}
+        {dealSummary(row.country, deals, t)}
+        {row.adjustments !== 0 && <span className="ml-2">· {t.adjustments(row.adjustments)}</span>}
       </motion.p>
     </div>
   )
 }
 
-function YouChip() {
+function YouChip({ label }: { label: string }) {
   return (
     <span className="inline-flex items-center rounded-full bg-ink px-2 py-0.5 text-xs font-extrabold uppercase tracking-[0.10em] text-gold">
-      You
+      {label}
     </span>
   )
 }
@@ -106,10 +105,12 @@ interface PodiumCardProps {
   delay: number
   expanded: boolean
   onToggle: () => void
+  t: S
+  lang: 'en' | 'zh'
   className?: string
 }
 
-function PodiumCard({ row, place, deals, active, isYou, delay, expanded, onToggle, className }: PodiumCardProps) {
+function PodiumCard({ row, place, deals, active, isYou, delay, expanded, onToggle, t, lang, className }: PodiumCardProps) {
   const seal = place === 1 ? '#C49A33' : place === 2 ? '#8B8F82' : '#B45A3C'
   return (
     <motion.article
@@ -139,7 +140,7 @@ function PodiumCard({ row, place, deals, active, isYou, delay, expanded, onToggl
         <span
           className="relative flex h-11 w-11 items-center justify-center rounded-full font-display text-xl font-bold text-paper"
           style={{ backgroundColor: seal }}
-          aria-label={`Rank ${place}`}
+          aria-label={t.rankAria(place)}
         >
           {place}
         </span>
@@ -147,12 +148,12 @@ function PodiumCard({ row, place, deals, active, isYou, delay, expanded, onToggl
           {row.flag}
         </span>
         <h3 className="relative font-display text-2xl font-semibold text-ink">
-          {row.country}
-          {isYou && <span className="ml-2 align-middle"><YouChip /></span>}
+          {countryName(row.country, lang)}
+          {isYou && <span className="ml-2 align-middle"><YouChip label={t.you} /></span>}
         </h3>
         <p className="relative font-mono text-[40px] font-semibold leading-10 text-ink">
           <CountUp value={row.total} active={active} />
-          <span className="ml-1 text-base font-semibold text-ink-soft">pts</span>
+          <span className="ml-1 text-base font-semibold text-ink-soft">{t.pts}</span>
         </p>
         {place === 1 && (
           <motion.span
@@ -161,7 +162,7 @@ function PodiumCard({ row, place, deals, active, isYou, delay, expanded, onToggl
             transition={{ ...SPRING, delay: delay + 0.4 }}
             className="relative rounded border-2 border-gold-ink px-2.5 py-1 text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink"
           >
-            Summit Champion
+            {t.champion}
           </motion.span>
         )}
         <button
@@ -170,7 +171,7 @@ function PodiumCard({ row, place, deals, active, isYou, delay, expanded, onToggl
           aria-expanded={expanded}
           className="relative mt-1 inline-flex min-h-11 items-center gap-1 rounded-full px-3 text-sm font-bold text-ink-soft transition-colors hover:text-ink"
         >
-          Details
+          {t.details}
           <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} aria-hidden />
         </button>
       </div>
@@ -183,7 +184,7 @@ function PodiumCard({ row, place, deals, active, isYou, delay, expanded, onToggl
             transition={{ duration: 0.35, ease: EASE }}
             className="overflow-hidden border-t border-hairline"
           >
-            <Breakdown row={row} deals={deals} />
+            <Breakdown row={row} deals={deals} t={t} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -202,6 +203,8 @@ export interface ScoreboardProps {
 
 /** Section 2 — podium + ranked scoreboard with expandable breakdowns. */
 export default function Scoreboard({ results, active, myCountry, baseDelay = 0 }: ScoreboardProps) {
+  const { lang } = useLang()
+  const t = useStrings(endgameStrings).scoreboard
   const [openCountry, setOpenCountry] = useState<string | null>(null)
   const { scoreboard, deals } = results
   const podium = scoreboard.slice(0, 3)
@@ -219,9 +222,9 @@ export default function Scoreboard({ results, active, myCountry, baseDelay = 0 }
 
   return (
     <section aria-labelledby="scoreboard-title">
-      <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink">Official results</p>
+      <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink">{t.kicker}</p>
       <h2 id="scoreboard-title" className="mt-1 font-display text-[26px] leading-8 font-semibold text-ink md:text-3xl">
-        Final Scoreboard
+        {t.title}
       </h2>
 
       {/* Podium: 2nd–1st–3rd on desktop, 1st first on mobile */}
@@ -241,6 +244,8 @@ export default function Scoreboard({ results, active, myCountry, baseDelay = 0 }
               delay={active ? podiumDelay(place) : 0}
               expanded={openCountry === row.country}
               onToggle={() => toggle(row.country)}
+              t={t}
+              lang={lang}
               className={cn('lg:w-64', orderCls)}
             />
           )
@@ -251,20 +256,20 @@ export default function Scoreboard({ results, active, myCountry, baseDelay = 0 }
       {rest.length > 0 && (
         <div className="mt-8 overflow-hidden rounded-2xl border border-hairline bg-card shadow-card">
           <div className="hidden grid-cols-[3rem_1fr_9rem_4.5rem_4.5rem_4.5rem_5rem_2.5rem] items-center gap-2 border-b border-hairline bg-paper-deep px-4 py-2.5 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft md:grid">
-            <span>Rank</span>
-            <span>Country</span>
-            <span>Bloc</span>
-            <span className="text-right">Deals</span>
-            <span className="text-right">Missions</span>
-            <span className="text-right">Adjust</span>
-            <span className="text-right">Total</span>
+            <span>{t.rank}</span>
+            <span>{t.headers.country}</span>
+            <span>{t.headers.bloc}</span>
+            <span className="text-right">{t.headers.deals}</span>
+            <span className="text-right">{t.headers.missions}</span>
+            <span className="text-right">{t.headers.adjust}</span>
+            <span className="text-right">{t.headers.total}</span>
             <span />
           </div>
           <ul>
             {rest.map((row, i) => {
               const isYou = myCountry === row.country
               const expanded = openCountry === row.country
-              const blocName = blocOf.get(row.country)
+              const blocName_ = blocOf.get(row.country)
               return (
                 <motion.li
                   key={row.country}
@@ -292,12 +297,12 @@ export default function Scoreboard({ results, active, myCountry, baseDelay = 0 }
                     <span className="font-mono text-lg font-semibold text-ink-soft">{row.rank}</span>
                     <span className="flex min-w-0 items-center gap-2 text-base font-bold text-ink">
                       <span aria-hidden className="text-xl">{row.flag}</span>
-                      <span className="truncate">{row.country}</span>
-                      {isYou && <YouChip />}
+                      <span className="truncate">{countryName(row.country, lang)}</span>
+                      {isYou && <YouChip label={t.you} />}
                     </span>
                     <span className="hidden md:block">
-                      {blocName && (
-                        <BlocBadge bloc={blocKeyFor(blocName, customNames)} name={blocName} size="sm" />
+                      {blocName_ && (
+                        <BlocBadge bloc={blocKeyFor(blocName_, customNames)} name={blocName(blocName_, lang)} size="sm" />
                       )}
                     </span>
                     <span className="hidden text-right font-mono text-sm font-semibold text-ink md:block">
@@ -326,7 +331,7 @@ export default function Scoreboard({ results, active, myCountry, baseDelay = 0 }
                         transition={{ duration: 0.35, ease: EASE }}
                         className="overflow-hidden border-t border-hairline"
                       >
-                        <Breakdown row={row} deals={deals} />
+                        <Breakdown row={row} deals={deals} t={t} />
                       </motion.div>
                     )}
                   </AnimatePresence>

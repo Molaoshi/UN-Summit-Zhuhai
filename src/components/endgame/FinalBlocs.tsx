@@ -4,14 +4,20 @@ import { COUNTRY_BY_NAME } from '@contracts/game-data'
 import CountryChip from '@/components/CountryChip'
 import { blocKeyFor, customBlocNames, STARTING_BLOC_META } from '@/components/lobby/bloc-meta'
 import { BLOCS } from '@/lib/game-ui'
+import { useLang, useStrings } from '@/lib/i18n'
+import { endgameStrings } from '@/lib/i18n/endgame'
+import type { EndgameStrings } from '@/lib/i18n/endgame'
+import { blocName, countryName } from '@/lib/i18n/shared'
 import { cn } from '@/lib/utils'
 import type { FinalBloc } from './types'
 
 const SPRING = { type: 'spring', stiffness: 380, damping: 22 } as const
 const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number]
 
+type ShiftStrings = EndgameStrings['blocs']['shift']
+
 /** Word-by-word typewriter fade for the bloc shift note. */
-function ShiftNote({ bloc, delay }: { bloc: FinalBloc; delay: number }) {
+function ShiftNote({ bloc, delay, t, lang }: { bloc: FinalBloc; delay: number; t: ShiftStrings; lang: 'en' | 'zh' }) {
   const isStarting = STARTING_BLOC_META.some((b) => b.name === bloc.name)
   const memberSet = new Set(bloc.members)
   const gained = bloc.members.filter((m) => COUNTRY_BY_NAME[m]?.startingBloc !== bloc.name)
@@ -20,14 +26,21 @@ function ShiftNote({ bloc, delay }: { bloc: FinalBloc; delay: number }) {
         .filter((c) => c.startingBloc === bloc.name && !memberSet.has(c.name))
         .map((c) => c.name)
     : []
-  const flags = (names: string[]) => names.map((n) => COUNTRY_BY_NAME[n]?.flag ?? n).join(' ')
-  const text = isStarting
-    ? `Started as: ${bloc.name}${gained.length ? ` · Gained: ${flags(gained)}` : ''}${lost.length ? ` · Lost: ${flags(lost)}` : ''}`
-    : `Founded during the summit${gained.length ? ` · Members: ${flags(gained)}` : ''}`
-  const words = text.split(' ')
+  const flags = (names: string[]) =>
+    names.map((n) => `${COUNTRY_BY_NAME[n]?.flag ?? ''} ${countryName(n, lang)}`).join(' ')
+  const parts = isStarting
+    ? [
+        t.startedAs(blocName(bloc.name, lang)),
+        gained.length ? t.gained(flags(gained)) : null,
+        lost.length ? t.lost(flags(lost)) : null,
+      ]
+    : [t.founded, gained.length ? t.members(flags(gained)) : null]
+  const text = parts.filter(Boolean).join(lang === 'zh' ? '　' : ' · ')
+  // Chinese has no spaces — fade character-by-character instead of word-by-word.
+  const units = lang === 'zh' ? text.split('') : text.split(' ')
   return (
     <p className="mt-3 text-sm font-semibold text-ink-soft">
-      {words.map((w, i) => (
+      {units.map((w, i) => (
         <motion.span
           key={i}
           initial={{ opacity: 0 }}
@@ -36,7 +49,7 @@ function ShiftNote({ bloc, delay }: { bloc: FinalBloc; delay: number }) {
           className="inline-block"
         >
           {w}
-          {i < words.length - 1 ? ' ' : ''}
+          {lang === 'en' && i < units.length - 1 ? ' ' : ''}
         </motion.span>
       ))}
     </p>
@@ -50,14 +63,16 @@ export interface FinalBlocsProps {
 
 /** Section 1 — "The New World Order": final blocs, biggest first. */
 export default function FinalBlocs({ blocs, rounds }: FinalBlocsProps) {
+  const { lang } = useLang()
+  const t = useStrings(endgameStrings).blocs
   const customs = customBlocNames(blocs.map((b) => b.name))
   return (
     <section aria-labelledby="final-blocs-title">
       <p className="text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink">
-        Final blocs · Round {rounds}
+        {t.kicker(rounds)}
       </p>
       <h2 id="final-blocs-title" className="mt-1 font-display text-[26px] leading-8 font-semibold text-ink md:text-3xl">
-        Where the alliances ended
+        {t.title}
       </h2>
 
       <div className="mt-5 flex flex-col gap-5">
@@ -94,11 +109,13 @@ export default function FinalBlocs({ blocs, rounds }: FinalBlocsProps) {
                   style={{ backgroundColor: BLOCS[key].color }}
                   aria-hidden
                 />
-                <h3 className="font-display text-2xl font-semibold text-ink md:text-3xl">{bloc.name}</h3>
+                <h3 className="font-display text-2xl font-semibold text-ink md:text-3xl">
+                  {blocName(bloc.name, lang)}
+                </h3>
                 {isCustom && (
                   <span className="inline-flex items-center gap-1 text-sm font-bold text-gold-ink">
                     <Sparkles className="h-4 w-4" aria-hidden />
-                    Founded by a delegate
+                    {t.foundedBy}
                   </span>
                 )}
                 {bloc.isBiggest && (
@@ -109,7 +126,7 @@ export default function FinalBlocs({ blocs, rounds }: FinalBlocsProps) {
                     className="ml-auto inline-flex items-center gap-1.5 rounded-full bg-gold-soft px-3.5 py-1.5 text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink"
                   >
                     <Crown className="h-4 w-4" aria-hidden />
-                    Biggest bloc — {bloc.size} members
+                    {t.biggest(bloc.size)}
                   </motion.span>
                 )}
               </div>
@@ -124,14 +141,14 @@ export default function FinalBlocs({ blocs, rounds }: FinalBlocsProps) {
                   >
                     <CountryChip
                       flag={COUNTRY_BY_NAME[m]?.flag ?? '🏳️'}
-                      name={m}
+                      name={countryName(m, lang)}
                       className="min-h-12 px-4 text-base"
                     />
                   </motion.span>
                 ))}
               </div>
 
-              <ShiftNote bloc={bloc} delay={base + 0.3 + bloc.members.length * 0.06} />
+              <ShiftNote bloc={bloc} delay={base + 0.3 + bloc.members.length * 0.06} t={t.shift} lang={lang} />
             </motion.article>
           )
         })}

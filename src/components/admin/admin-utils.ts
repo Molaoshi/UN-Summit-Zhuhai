@@ -62,6 +62,8 @@ export function saveAdminCreds(creds: AdminCreds) {
 
 export function clearAdminCreds() {
   localStorage.removeItem(CREDS_KEY)
+  // Also drop the legacy raw-PIN key so "start a new game" fully signs out.
+  localStorage.removeItem(LEGACY_PIN_KEY)
 }
 
 // ── Page context (creds, projector mode, toast, refresh) ───────────────────
@@ -155,19 +157,22 @@ export function countryFreeTrader(name: string): boolean {
 }
 
 /**
- * Caption for missions whose condition is only decided later:
+ * Timing key for missions whose condition is only decided later:
  * bloc conditions re-check at round end, comparisons at game end.
+ * Map to a caption via `useStrings(adminStrings).missions.timing`.
  */
-export function missionTimingCaption(country: string, slot: MissionSlot): string | null {
+export type MissionTiming = 'roundEnd' | 'gameEnd'
+
+export function missionTimingKey(country: string, slot: MissionSlot): MissionTiming | null {
   const mission = COUNTRY_BY_NAME[country]?.missions.find((m) => m.slot === slot)
   if (!mission) return null
   switch (mission.condition.kind) {
     case 'biggest_bloc':
     case 'bloc_size':
-      return 'checks at round end'
+      return 'roundEnd'
     case 'deal_count_compare':
     case 'total_deals_compare':
-      return 'decided at game end'
+      return 'gameEnd'
     default:
       return null
   }

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { motion } from 'framer-motion'
 import { KeyRound, Lock } from 'lucide-react'
+import { LangToggle, useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
 import type { AdminCreds } from '@/components/admin/admin-utils'
 
 export interface PinGateProps {
@@ -14,6 +16,7 @@ export interface PinGateProps {
 
 /** Teacher sign-in card shown before the dashboard (PIN gate). */
 export default function PinGate({ initialCode = '', error, onSubmit }: PinGateProps) {
+  const t = useStrings(adminStrings).pinGate
   const [code, setCode] = useState(initialCode)
   const [pin, setPin] = useState('')
   const [localError, setLocalError] = useState<string | null>(null)
@@ -25,11 +28,11 @@ export default function PinGate({ initialCode = '', error, onSubmit }: PinGatePr
     const cleanCode = code.trim().toUpperCase()
     const cleanPin = pin.trim()
     if (!cleanCode) {
-      setLocalError('Enter the room code.')
+      setLocalError(t.errNoCode)
       return
     }
     if (cleanPin.length < 4 || cleanPin.length > 6) {
-      setLocalError('The admin PIN is 4–6 characters.')
+      setLocalError(t.errPinLength)
       return
     }
     setLocalError(null)
@@ -37,7 +40,10 @@ export default function PinGate({ initialCode = '', error, onSubmit }: PinGatePr
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-paper px-4 py-10">
+    <div className="relative flex min-h-[100dvh] items-center justify-center bg-paper px-4 py-10">
+      <div className="absolute right-4 top-4">
+        <LangToggle />
+      </div>
       <motion.div
         initial={{ y: 24, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -46,10 +52,8 @@ export default function PinGate({ initialCode = '', error, onSubmit }: PinGatePr
       >
         <div className="mb-6 flex flex-col items-center text-center">
           <img src="/logo-mark.svg" alt="" className="mb-3 h-12 w-12" />
-          <h1 className="font-display text-2xl font-semibold text-ink">Teacher sign-in</h1>
-          <p className="mt-1 text-base text-ink-soft">
-            This control room is for the teacher only.
-          </p>
+          <h1 className="font-display text-2xl font-semibold text-ink">{t.title}</h1>
+          <p className="mt-1 text-base text-ink-soft">{t.subtitle}</p>
         </div>
         <motion.form
           key={shownError ?? 'ok'}
@@ -60,20 +64,20 @@ export default function PinGate({ initialCode = '', error, onSubmit }: PinGatePr
         >
           <div>
             <label htmlFor="admin-code" className="mb-1.5 block text-sm font-bold text-ink">
-              Room code
+              {t.roomCode}
             </label>
             <input
               id="admin-code"
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="KITE42"
+              placeholder={t.roomCodePlaceholder}
               autoComplete="off"
               className="w-full rounded-xl border border-hairline bg-paper px-4 py-3 font-mono text-lg font-semibold uppercase tracking-[0.12em] text-ink placeholder:text-ink-faint"
             />
           </div>
           <div>
             <label htmlFor="admin-pin" className="mb-1.5 block text-sm font-bold text-ink">
-              Admin PIN
+              {t.adminPin}
             </label>
             <input
               id="admin-pin"
@@ -81,7 +85,7 @@ export default function PinGate({ initialCode = '', error, onSubmit }: PinGatePr
               inputMode="numeric"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              placeholder="4–6 digits"
+              placeholder={t.pinPlaceholder}
               autoComplete="off"
               className="w-full rounded-xl border border-hairline bg-paper px-4 py-3 font-mono text-lg font-semibold tracking-[0.12em] text-ink placeholder:text-ink-faint"
             />
@@ -97,11 +101,11 @@ export default function PinGate({ initialCode = '', error, onSubmit }: PinGatePr
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-ink px-4 py-3.5 text-lg font-extrabold text-paper shadow-card transition-colors hover:bg-ink/90"
           >
             <KeyRound className="h-5 w-5" aria-hidden />
-            Open dashboard
+            {t.openDashboard}
           </motion.button>
           <p className="flex items-center justify-center gap-1.5 text-sm text-ink-faint">
             <Lock className="h-3.5 w-3.5" aria-hidden />
-            Students never see this page.
+            {t.studentsNote}
           </p>
         </motion.form>
       </motion.div>

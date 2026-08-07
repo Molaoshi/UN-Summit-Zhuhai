@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Megaphone } from 'lucide-react'
-import ActionPips from '@/components/ActionPips'
+import ActionPips from '@/components/play/ActionPips'
+import { useStrings } from '@/lib/i18n'
+import { playStrings } from '@/lib/i18n/play'
 
 export interface RoundStatusBarProps {
   round: number
@@ -22,6 +24,7 @@ export default function RoundStatusBar({
   scoreBreakdown,
 }: RoundStatusBarProps) {
   const [scoreOpen, setScoreOpen] = useState(false)
+  const s = useStrings(playStrings)
   const isRoundEnd = phase === 'round_end'
 
   return (
@@ -46,7 +49,7 @@ export default function RoundStatusBar({
                   transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                   className="font-display text-2xl font-semibold text-ink"
                 >
-                  ROUND {round}
+                  {s.roundLabel(round)}
                 </motion.span>
               </AnimatePresence>
               <motion.span
@@ -66,7 +69,7 @@ export default function RoundStatusBar({
                   style={{ backgroundColor: isRoundEnd ? '#B07E22' : '#2E6E6A' }}
                   aria-hidden
                 />
-                {isRoundEnd ? 'Round end — choose your bloc' : 'Negotiation'}
+                {isRoundEnd ? s.phaseRoundEnd : s.phaseNegotiation}
               </motion.span>
             </div>
 
@@ -84,7 +87,7 @@ export default function RoundStatusBar({
                 aria-expanded={scoreOpen}
               >
                 <span className="text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink">
-                  My score
+                  {s.myScore}
                 </span>
                 <span className="font-mono text-lg font-semibold leading-none text-gold-ink">
                   {score}
@@ -106,25 +109,24 @@ export default function RoundStatusBar({
                       className="absolute right-0 z-20 mt-2 w-64 rounded-2xl border border-hairline bg-card p-4 text-sm shadow-raised"
                     >
                       <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                        My score breakdown
+                        {s.scoreBreakdown}
                       </p>
                       <div className="space-y-1 font-semibold text-ink">
                         <div className="flex justify-between">
-                          <span>Deals</span>
+                          <span>{s.scoreDeals}</span>
                           <span className="font-mono">{scoreBreakdown.deals}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span>Missions</span>
+                          <span>{s.scoreMissions}</span>
                           <span className="font-mono">{scoreBreakdown.missions}</span>
                         </div>
                         <div className="mt-2 flex justify-between border-t border-hairline pt-2 font-extrabold">
-                          <span>Total</span>
+                          <span>{s.scoreTotal}</span>
                           <span className="font-mono text-gold-ink">{score}</span>
                         </div>
                       </div>
                       <p className="mt-2 text-xs font-semibold text-ink-faint">
-                        Teacher score adjustments are added at the end of the
-                        game.
+                        {s.scoreNote}
                       </p>
                     </motion.div>
                   </>
@@ -136,7 +138,7 @@ export default function RoundStatusBar({
             <div className="border-t border-hairline bg-gold-soft/60">
               <p className="mx-auto flex max-w-[1200px] items-center gap-2 px-4 py-1.5 text-sm font-bold text-gold-ink md:px-8">
                 <Megaphone className="h-4 w-4 shrink-0" aria-hidden />
-                Stand up and tell the class your public mission!
+                {s.shoutPublicMission}
               </p>
             </div>
           )}

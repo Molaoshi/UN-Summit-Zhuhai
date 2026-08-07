@@ -10,6 +10,8 @@ export interface FinalBloc {
 export interface FinalMission {
   slot: 'public' | 'private' | 'bonus'
   text: string
+  /** Simplified Chinese mission text (falls back to English server-side). */
+  textZh: string
   status: 'completed' | 'on_track' | 'at_risk' | 'failed'
   points: number
   overridden: boolean
@@ -18,6 +20,8 @@ export interface FinalMission {
 export interface ScoreRow {
   rank: number
   country: string
+  /** Simplified Chinese country name (from the server). */
+  countryZh?: string
   flag: string
   dealPoints: number
   missionPoints: number

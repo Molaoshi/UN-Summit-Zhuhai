@@ -1,14 +1,17 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Timer } from 'lucide-react'
-import { formatClock, formatDuration, roundSummaries } from '@/components/admin/admin-utils'
+import { formatClock, roundSummaries } from '@/components/admin/admin-utils'
 import type { AdminState } from '@/components/admin/admin-utils'
+import { useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
 import { cn } from '@/lib/utils'
 
 const PLAN_KEY = 'summit:plan-rounds'
 
 /** Round pacing card: suggested pace track + per-round history. */
 export default function PacingCard({ state }: { state: AdminState }) {
+  const t = useStrings(adminStrings).pacing
   const [plan, setPlan] = useState<number>(() => {
     const raw = Number(localStorage.getItem(PLAN_KEY))
     return raw === 4 || raw === 5 || raw === 6 ? raw : 6
@@ -26,18 +29,18 @@ export default function PacingCard({ state }: { state: AdminState }) {
   const perRoundMs = (2.5 * 60 * 60 * 1000) / plan
   const suggestion =
     status === 'playing' && current?.beganAt
-      ? `Suggestion: end Round ${currentRound} around ${formatClock(new Date(current.beganAt.getTime() + perRoundMs))}`
-      : 'Suggested pace: 4–6 rounds · 2–2.5 hours.'
+      ? t.suggestEnd(currentRound, formatClock(new Date(current.beganAt.getTime() + perRoundMs)))
+      : t.suggestPace
 
   return (
     <section className="rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-6">
       <div className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-        Suggested pace for 2–2.5 hours
+        {t.kicker}
       </div>
-      <h2 className="mt-1 font-display text-2xl font-semibold text-ink">Round pacing</h2>
+      <h2 className="mt-1 font-display text-2xl font-semibold text-ink">{t.title}</h2>
 
       {/* Round track dots */}
-      <div className="mt-4 flex items-center gap-2.5" role="list" aria-label="Round track">
+      <div className="mt-4 flex items-center gap-2.5" role="list" aria-label={t.roundTrack}>
         {Array.from({ length: 6 }, (_, i) => {
           const round = i + 1
           const done = status === 'ended' || round < currentRound
@@ -50,7 +53,7 @@ export default function PacingCard({ state }: { state: AdminState }) {
               animate={{ scale: 1 }}
               transition={{ type: 'spring', stiffness: 380, damping: 22, delay: i * 0.05 }}
               className="relative flex h-9 w-9 items-center justify-center"
-              title={`Round ${round}${done ? ' (done)' : currentDot ? ' (current)' : ''}`}
+              title={t.roundState(round, done ? 'done' : currentDot ? 'current' : null)}
             >
               {currentDot && (
                 <motion.span
@@ -76,16 +79,16 @@ export default function PacingCard({ state }: { state: AdminState }) {
           )
         })}
         <label className="ml-auto flex items-center gap-2 text-sm font-bold text-ink-soft">
-          Plan:
+          {t.plan}
           <select
             value={plan}
             onChange={(e) => choosePlan(Number(e.target.value))}
             className="rounded-lg border border-hairline bg-paper px-2 py-1.5 font-mono text-sm font-semibold text-ink"
-            aria-label="Planned number of rounds"
+            aria-label={t.planAria}
           >
             {[4, 5, 6].map((n) => (
               <option key={n} value={n}>
-                {n} rounds
+                {t.planOption(n)}
               </option>
             ))}
           </select>
@@ -103,10 +106,10 @@ export default function PacingCard({ state }: { state: AdminState }) {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-paper-deep text-left text-xs font-extrabold uppercase tracking-[0.08em] text-ink-soft">
-                <th className="px-3 py-2">Round</th>
-                <th className="px-3 py-2">Deals signed</th>
-                <th className="px-3 py-2">Duration</th>
-                <th className="px-3 py-2">Ended at</th>
+                <th className="px-3 py-2">{t.history.round}</th>
+                <th className="px-3 py-2">{t.history.dealsSigned}</th>
+                <th className="px-3 py-2">{t.history.duration}</th>
+                <th className="px-3 py-2">{t.history.endedAt}</th>
               </tr>
             </thead>
             <tbody>
@@ -116,9 +119,9 @@ export default function PacingCard({ state }: { state: AdminState }) {
                   <td className="px-3 py-2 font-mono font-semibold text-ink">{s.dealsSigned}</td>
                   <td className="px-3 py-2 text-ink-soft">
                     {s.beganAt && s.endedAt
-                      ? formatDuration(s.endedAt.getTime() - s.beganAt.getTime())
+                      ? t.duration(s.endedAt.getTime() - s.beganAt.getTime())
                       : s.round === currentRound && status === 'playing'
-                        ? 'in progress'
+                        ? t.history.inProgress
                         : '—'}
                   </td>
                   <td className="px-3 py-2 font-mono text-ink-soft">

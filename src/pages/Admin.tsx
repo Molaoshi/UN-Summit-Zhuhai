@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'react-router'
-import { WifiOff } from 'lucide-react'
+import { Link, useNavigate, useSearchParams } from 'react-router'
+import { Flag, Play, WifiOff } from 'lucide-react'
 import { trpc } from '@/providers/trpc'
 import SummitHeader from '@/components/SummitHeader'
 import Toast from '@/components/Toast'
@@ -22,10 +22,14 @@ import {
   saveAdminCreds,
 } from '@/components/admin/admin-utils'
 import type { AdminCreds } from '@/components/admin/admin-utils'
+import { useStrings } from '@/lib/i18n'
+import { adminStrings } from '@/lib/i18n/admin'
+import { clearSession } from '@/lib/session'
 
 function DashboardSkeleton() {
+  const t = useStrings(adminStrings)
   return (
-    <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-8 md:px-8" aria-label="Loading admin dashboard">
+    <div className="mx-auto max-w-[1440px] space-y-6 px-4 py-8 md:px-8" aria-label={t.loading.skeletonAria}>
       <div className="h-24 animate-pulse rounded-2xl border border-hairline bg-card" />
       <div className="grid gap-6 lg:grid-cols-12">
         <div className="h-80 animate-pulse rounded-2xl border border-hairline bg-card lg:col-span-7" />
@@ -37,6 +41,8 @@ function DashboardSkeleton() {
 
 /** Admin dashboard: the teacher's projector control room. */
 export default function Admin() {
+  const t = useStrings(adminStrings)
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [creds, setCreds] = useState<AdminCreds | null>(() => loadAdminCreds())
   const [gateError, setGateError] = useState<string | null>(null)
@@ -58,9 +64,9 @@ export default function Admin() {
     if (authFailed) {
       clearAdminCreds()
       setCreds(null)
-      setGateError('Wrong room code or admin PIN. Try again.')
+      setGateError(t.pinGate.wrongPin)
     }
-  }, [authFailed])
+  }, [authFailed, t])
 
   const state = query.data
   const customBlocs = useMemo(() => (state ? customBlocNames(state) : []), [state])
@@ -99,6 +105,13 @@ export default function Admin() {
     })
   }
 
+  /** Sign out of the finished room entirely and go home for a fresh game. */
+  const startNewGame = () => {
+    clearSession()
+    clearAdminCreds()
+    navigate('/')
+  }
+
   // ── PIN gate ──────────────────────────────────────────────────────────────
   if (!creds) {
     return <PinGate initialCode={searchParams.get('code') ?? ''} error={gateError} onSubmit={handleGate} />
@@ -116,8 +129,60 @@ export default function Admin() {
 
   const room = state?.room ?? { code: creds.code, status: 'lobby' as const, currentRound: 0, roundPhase: 'negotiation' as const }
   const started = room.status !== 'lobby'
+  const ended = room.status === 'ended'
   const phaseLabel =
-    room.status === 'lobby' ? 'LOBBY' : room.status === 'ended' ? 'ENDED' : room.roundPhase === 'round_end' ? 'ROUND END' : 'NEGOTIATION'
+    room.status === 'lobby'
+      ? t.header.phase.lobby
+      : ended
+        ? t.header.phase.ended
+        : room.roundPhase === 'round_end'
+          ? t.header.phase.round_end
+          : t.header.phase.negotiation
+
+  // ── Finished room: clear finished-state card instead of the live dashboard ─
+  if (ended) {
+    return (
+      <div className="flex min-h-[100dvh] flex-col bg-paper">
+        <SummitHeader
+          variant="game"
+          roomCode={room.code}
+          roundNumber={room.currentRound}
+          phase={phaseLabel}
+          onCopyRoomCode={() => {
+            void navigator.clipboard?.writeText(room.code).catch(() => {})
+            setToast(t.header.roomCodeCopied)
+          }}
+        />
+        <main className="flex flex-1 items-center justify-center px-4 py-10">
+          <div className="w-full max-w-lg rounded-2xl border border-hairline bg-card p-6 text-center shadow-card md:p-8">
+            <span className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-gold-soft text-gold-ink">
+              <Flag className="h-7 w-7" aria-hidden />
+            </span>
+            <h1 className="font-display text-3xl font-semibold text-ink">{t.ended.title}</h1>
+            <p className="mt-2 text-lg leading-7 text-ink-soft">{t.ended.body}</p>
+            <div className="mt-6 flex flex-col gap-3">
+              <Link
+                to="/endgame"
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-ink px-5 text-lg font-extrabold text-paper shadow-card transition-colors hover:bg-ink/90"
+              >
+                <Flag className="h-5 w-5" aria-hidden />
+                {t.ended.viewResults}
+              </Link>
+              <button
+                type="button"
+                onClick={startNewGame}
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border-2 border-ink px-5 text-lg font-extrabold text-ink transition-colors hover:bg-paper-deep"
+              >
+                <Play className="h-5 w-5" aria-hidden />
+                {t.ended.newGame}
+              </button>
+            </div>
+          </div>
+        </main>
+        <Toast open={!!toast} message={toast ?? ''} onClose={() => setToast(null)} />
+      </div>
+    )
+  }
 
   const signedCount = state ? state.allDeals.filter((d) => d.status === 'accepted').length : 0
   const pendingCount = state ? state.pendingDeals.length : 0
@@ -132,7 +197,7 @@ export default function Admin() {
           phase={phaseLabel}
           onCopyRoomCode={() => {
             void navigator.clipboard?.writeText(room.code).catch(() => {})
-            setToast('Room code copied.')
+            setToast(t.header.roomCodeCopied)
           }}
         />
 
@@ -152,7 +217,7 @@ export default function Admin() {
           <div className="border-b border-hairline bg-status-failed-soft">
             <div className="mx-auto flex max-w-[1440px] items-center gap-2 px-4 py-2 text-sm font-bold text-status-failed md:px-8">
               <WifiOff className="h-4 w-4 shrink-0" aria-hidden />
-              Connection lost — retrying every few seconds. Controls are disabled until we're back.
+              {t.offline}
             </div>
           </div>
         )}

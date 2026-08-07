@@ -11,8 +11,11 @@ import {
   countryHasPower,
   type AssetKey,
   type CountryData,
+  type Lang,
   type MissionCondition,
 } from '@contracts/game-data'
+import { countryName } from '@/lib/i18n/shared'
+import { playStrings } from '@/lib/i18n/play'
 import type { BlocKey, DealType, StatusKey } from '@/lib/game-ui'
 
 export type RouterOutputs = inferRouterOutputs<AppRouter>
@@ -218,11 +221,13 @@ export function missionProgress(
   myCountry: CountryData,
   blocs: Record<string, string>,
   peekedCountry: string | null,
+  lang: Lang,
 ): MissionProgress {
+  const s = playStrings[lang]
   if (!condition) return { checkedAtRoundEnd: false }
   if (condition.kind === 'deal_with_peeked_country' && !peekedCountry) {
     return {
-      progress: 'Use your Espionage peek to reveal the target country',
+      progress: s.usePeekToReveal,
       checkedAtRoundEnd: false,
     }
   }
@@ -230,7 +235,12 @@ export function missionProgress(
     const p = condProgress(condition, signed, myCountry, blocs, peekedCountry)
     return {
       progress: p
-        ? `Sign any deal with ${flagOf(peekedCountry)} ${peekedCountry} (${Math.min(p.done, p.total)} of ${p.total})`
+        ? s.signDealWith(
+            flagOf(peekedCountry),
+            countryName(peekedCountry, lang),
+            Math.min(p.done, p.total),
+            p.total,
+          )
         : undefined,
       checkedAtRoundEnd: false,
     }
@@ -242,15 +252,24 @@ export function missionProgress(
   if (!p) return { checkedAtRoundEnd: false }
   const unit = p.total === 1 && p.unit === 'deal' ? 'deal' : p.unit
   return {
-    progress: `${Math.min(p.done, p.total)} of ${p.total} ${unit}`,
+    progress: s.progressOf(
+      Math.min(p.done, p.total),
+      p.total,
+      s.progressUnits[unit] ?? unit,
+    ),
     checkedAtRoundEnd: false,
   }
 }
 
-/** Format a feed timestamp like "R2 · 14:32". */
-export function feedTimestamp(round: number, createdAt: Date | string): string {
+/** Format a feed timestamp like "R2 · 14:32" / "第2回合 · 14:32". */
+export function feedTimestamp(
+  round: number,
+  createdAt: Date | string,
+  lang: Lang,
+): string {
   const d = createdAt instanceof Date ? createdAt : new Date(createdAt)
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
-  return `R${round} · ${hh}:${mm}`
+  const roundLabel = lang === 'zh' ? `第${round}回合` : `R${round}`
+  return `${roundLabel} · ${hh}:${mm}`
 }

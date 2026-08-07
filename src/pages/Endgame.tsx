@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { motion, useReducedMotion } from 'framer-motion'
 import confetti from 'canvas-confetti'
-import { ArrowUp, Hourglass, Printer, RotateCcw } from 'lucide-react'
+import { ArrowUp, Hourglass, Play, Printer, RotateCcw } from 'lucide-react'
 import Toast from '@/components/Toast'
 import FinalBlocs from '@/components/endgame/FinalBlocs'
 import HonorRoll from '@/components/endgame/HonorRoll'
 import Scoreboard from '@/components/endgame/Scoreboard'
 import type { FinalResults } from '@/components/endgame/types'
+import { clearAdminCreds } from '@/components/admin/admin-utils'
+import { LangToggle, useStrings } from '@/lib/i18n'
+import { endgameStrings } from '@/lib/i18n/endgame'
 import { clearSession, loadSession } from '@/lib/session'
 import { trpc } from '@/providers/trpc'
 
@@ -32,15 +35,19 @@ function winnerBurst() {
 /** Centered minimal logo bar (the reveal replaces in-game chrome). */
 function MinimalHeader() {
   return (
-    <header className="flex items-center justify-center gap-2.5 py-5">
+    <header className="relative flex items-center justify-center gap-2.5 py-5">
       <img src="/logo-mark.svg" alt="" className="h-7 w-7" />
       <span className="font-display text-lg font-semibold text-ink">UN Summit: Zhuhai</span>
+      <div className="absolute right-4">
+        <LangToggle />
+      </div>
     </header>
   )
 }
 
 /** Waiting state shown while the teacher has not ended the game yet. */
 function WaitingState() {
+  const t = useStrings(endgameStrings).waiting
   return (
     <div className="flex min-h-[100dvh] flex-col bg-paper">
       <MinimalHeader />
@@ -51,18 +58,15 @@ function WaitingState() {
         >
           <Hourglass className="h-10 w-10 text-gold-ink" aria-hidden />
         </motion.div>
-        <h1 className="font-display text-3xl font-semibold text-ink md:text-4xl">
-          The summit is still negotiating
-        </h1>
-        <p className="max-w-sm text-lg leading-7 text-ink-soft">
-          Waiting for the teacher to end the game — the final results will appear here automatically.
-        </p>
+        <h1 className="font-display text-3xl font-semibold text-ink md:text-4xl">{t.title}</h1>
+        <p className="max-w-sm text-lg leading-7 text-ink-soft">{t.body}</p>
       </main>
     </div>
   )
 }
 
 export default function Endgame() {
+  const t = useStrings(endgameStrings)
   const navigate = useNavigate()
   const [session] = useState(loadSession)
   const reduced = useReducedMotion() ?? false
@@ -121,7 +125,7 @@ export default function Endgame() {
   // Personal arrival toast on player devices.
   useEffect(() => {
     if (results && session?.role === 'student') {
-      setToast('The summit has ended — check your results!')
+      setToast(t.toast.arrived)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results])
@@ -135,7 +139,7 @@ export default function Endgame() {
         <div className="flex min-h-[100dvh] flex-col bg-paper">
           <MinimalHeader />
           <main className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
-            <h1 className="font-display text-3xl font-semibold text-ink">Results unavailable</h1>
+            <h1 className="font-display text-3xl font-semibold text-ink">{t.unavailable.title}</h1>
             <p className="max-w-sm text-lg text-ink-soft">{error.message}</p>
           </main>
         </div>
@@ -146,12 +150,19 @@ export default function Endgame() {
 
   const animated = stage !== 99
   const dealsSigned = results.deals.filter((d) => d.status === 'accepted').length
-  const titleWords = ['The', 'Summit', 'Has', 'Ended']
+  const titleWords = t.opening.titleWords
 
   const replay = () => {
     if (seenKey) sessionStorage.removeItem(seenKey)
     window.scrollTo({ top: 0 })
     setRunId((r) => r + 1)
+  }
+
+  /** Clear the finished room (session + admin creds) and go home for a fresh game. */
+  const startNewGame = () => {
+    clearSession()
+    clearAdminCreds()
+    navigate('/')
   }
 
   return (
@@ -205,8 +216,7 @@ export default function Endgame() {
               transition={{ duration: 0.5, ease: EASE, delay: animated ? 1.9 : 0 }}
               className="text-lg leading-7 text-ink-soft"
             >
-              15 countries · {results.rounds} round{results.rounds === 1 ? '' : 's'} · {dealsSigned} deal
-              {dealsSigned === 1 ? '' : 's'} signed — here are the results.
+              {t.opening.subtitle(results.scoreboard.length, results.rounds, dealsSigned)}
             </motion.p>
           </section>
 
@@ -244,7 +254,15 @@ export default function Endgame() {
                   className="inline-flex min-h-12 items-center gap-2 rounded-xl bg-ink px-5 text-base font-bold text-paper transition-colors hover:bg-ink/90"
                 >
                   <ArrowUp className="h-4 w-4" aria-hidden />
-                  Back to top
+                  {t.closing.backToTop}
+                </button>
+                <button
+                  type="button"
+                  onClick={startNewGame}
+                  className="inline-flex min-h-12 items-center gap-2 rounded-xl border-2 border-ink px-5 text-base font-bold text-ink transition-colors hover:bg-paper-deep"
+                >
+                  <Play className="h-4 w-4" aria-hidden />
+                  {t.closing.newGame}
                 </button>
                 <button
                   type="button"
@@ -252,7 +270,7 @@ export default function Endgame() {
                   className="inline-flex min-h-12 items-center gap-2 rounded-xl px-4 text-sm font-bold text-ink-soft transition-colors hover:text-ink"
                 >
                   <RotateCcw className="h-4 w-4" aria-hidden />
-                  Replay reveal
+                  {t.closing.replay}
                 </button>
                 <button
                   type="button"
@@ -260,21 +278,10 @@ export default function Endgame() {
                   className="inline-flex min-h-12 items-center gap-2 rounded-xl px-4 text-sm font-bold text-ink-soft transition-colors hover:text-ink"
                 >
                   <Printer className="h-4 w-4" aria-hidden />
-                  Print results
+                  {t.closing.print}
                 </button>
-                {session.role === 'teacher' && (
-                  <button
-                    type="button"
-                    onClick={() => navigate('/')}
-                    className="inline-flex min-h-12 items-center gap-2 rounded-xl border-2 border-ink px-5 text-base font-bold text-ink transition-colors hover:bg-paper-deep"
-                  >
-                    Teacher: start a new game →
-                  </button>
-                )}
               </div>
-              <p className="text-sm font-semibold text-ink-soft">
-                Thanks for negotiating · UN Summit: Zhuhai
-              </p>
+              <p className="text-sm font-semibold text-ink-soft">{t.closing.thanks}</p>
             </motion.section>
           )}
         </main>
