@@ -410,7 +410,7 @@ export const COUNTRIES: CountryData[] = [
       },
       {
         "slot": "bonus",
-        "text": "Be a bridge-builder: sign deals with at least 3 countries outside your starting bloc.",
+        "text": "Be a bridge-builder: sign at least 3 deals with countries outside your starting bloc.",
         "condition": {
           "kind": "cross_bloc_deals",
           "min": 3

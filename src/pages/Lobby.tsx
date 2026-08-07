@@ -13,6 +13,7 @@ import RoomBanner from '@/components/lobby/RoomBanner'
 import SeatCard from '@/components/lobby/SeatCard'
 import type { SeatInfo } from '@/components/lobby/SeatCard'
 import { STARTING_BLOC_META } from '@/components/lobby/bloc-meta'
+import { clearAdminCreds, loadAdminCreds, saveAdminCreds } from '@/components/admin/admin-utils'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { clearSession, loadSession, saveSession } from '@/lib/session'
 import { BLOCS } from '@/lib/game-ui'
@@ -35,7 +36,9 @@ export default function Lobby() {
   const [toast, setToast] = useState<string | null>(null)
   const [claimCountry, setClaimCountry] = useState<string | null>(null)
   const [conflictName, setConflictName] = useState<string | null>(null)
-  const [pin, setPin] = useState(() => localStorage.getItem(PIN_KEY) ?? '')
+  const [pin, setPin] = useState(
+    () => localStorage.getItem(PIN_KEY) ?? loadAdminCreds()?.pin ?? '',
+  )
   const [adminSheetOpen, setAdminSheetOpen] = useState(false)
   const [pulsing, setPulsing] = useState<ReadonlySet<string>>(new Set())
 
@@ -173,6 +176,7 @@ export default function Lobby() {
       if (message.toLowerCase().includes('pin')) {
         setPin('')
         localStorage.removeItem(PIN_KEY)
+        clearAdminCreds()
       }
       setToast(message)
     }
@@ -189,6 +193,7 @@ export default function Lobby() {
       if (message.toLowerCase().includes('pin')) {
         setPin('')
         localStorage.removeItem(PIN_KEY)
+        clearAdminCreds()
       }
       setToast(message)
     }
@@ -205,6 +210,9 @@ export default function Lobby() {
       onPinChange={(p) => {
         setPin(p)
         localStorage.setItem(PIN_KEY, p)
+        // Keep the Admin dashboard's JSON credential store in sync so the
+        // teacher is never locked out after pressing Start.
+        saveAdminCreds({ code: session.roomCode, pin: p })
       }}
       releasing={release.isPending}
       starting={startGame.isPending}

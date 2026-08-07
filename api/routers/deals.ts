@@ -23,7 +23,7 @@ import {
   requirePlayer,
 } from "./helpers";
 
-function assertDealPhase(room: { status: string }): void {
+function assertDealPhase(room: { status: string; roundPhase: string }): void {
   if (room.status !== "playing") {
     throw new TRPCError({
       code: "CONFLICT",
@@ -31,6 +31,12 @@ function assertDealPhase(room: { status: string }): void {
         room.status === "lobby"
           ? "The game has not started yet."
           : "The game has ended.",
+    });
+  }
+  if (room.roundPhase !== "negotiation") {
+    throw new TRPCError({
+      code: "CONFLICT",
+      message: "Deal actions are closed — round end phase.",
     });
   }
 }
@@ -232,20 +238,25 @@ export const dealsRouter = createRouter({
           message: "Only the two countries in this deal can cancel it.",
         });
       }
-      await assertActionBudget(d, room, myCountry);
+      // Cleaning up an offer from a previous round is free (it expired when
+      // the round advanced); only current-round cancels consume an action.
+      const expired = deal.round !== room.currentRound;
+      if (!expired) await assertActionBudget(d, room, myCountry);
 
       await d
         .update(deals)
         .set({ status: "cancelled", resolvedAt: new Date() })
         .where(eq(deals.id, deal.id));
-      await recordAction(
-        d,
-        room.id,
-        room.currentRound,
-        myCountry,
-        "cancel",
-        deal.id,
-      );
+      if (!expired) {
+        await recordAction(
+          d,
+          room.id,
+          room.currentRound,
+          myCountry,
+          "cancel",
+          deal.id,
+        );
+      }
       await logActivity(
         d,
         room,

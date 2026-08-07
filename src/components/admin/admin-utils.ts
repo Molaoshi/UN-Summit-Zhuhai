@@ -9,6 +9,7 @@ import type { AppRouter } from '../../../api/router'
 import { COUNTRIES, COUNTRY_BY_NAME, STARTING_BLOCS } from '@contracts/game-data'
 import type { MissionSlot } from '@contracts/game-data'
 import type { BlocKey, DealType, StatusKey } from '@/lib/game-ui'
+import { loadSession } from '@/lib/session'
 
 // ── tRPC payload types ─────────────────────────────────────────────────────
 
@@ -29,15 +30,27 @@ export interface AdminCreds {
 }
 
 const CREDS_KEY = 'summit:admin'
+const LEGACY_PIN_KEY = 'summit:adminPin'
 export const PROJECTOR_KEY = 'summit:projector'
 
 export function loadAdminCreds(): AdminCreds | null {
   try {
     const raw = localStorage.getItem(CREDS_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as AdminCreds
-    if (!parsed.code || !parsed.pin) return null
-    return parsed
+    if (raw) {
+      const parsed = JSON.parse(raw) as AdminCreds
+      if (parsed.code && parsed.pin) return parsed
+    }
+    // Legacy fallback: the lobby used to store the PIN as a raw string under
+    // 'summit:adminPin'. Recover it with the session's room code and heal the
+    // JSON store so the teacher is never locked out.
+    const legacyPin = localStorage.getItem(LEGACY_PIN_KEY)
+    const code = loadSession()?.roomCode
+    if (legacyPin && code) {
+      const creds: AdminCreds = { code, pin: legacyPin }
+      saveAdminCreds(creds)
+      return creds
+    }
+    return null
   } catch {
     return null
   }

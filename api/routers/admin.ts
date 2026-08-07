@@ -4,8 +4,9 @@
  */
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import {
+  deals,
   missionOverrides,
   players,
   rooms,
@@ -88,6 +89,25 @@ export const adminRouter = createRouter({
         "game",
         `Round ${nextRound} begins. You have 3 new deal actions.`,
       );
+      // Expire stale pending offers from earlier rounds.
+      const staleFilter = and(
+        eq(deals.roomId, room.id),
+        eq(deals.status, "pending"),
+        lt(deals.round, nextRound),
+      );
+      const stale = await d.select({ id: deals.id }).from(deals).where(staleFilter);
+      if (stale.length > 0) {
+        await d
+          .update(deals)
+          .set({ status: "cancelled", resolvedAt: new Date() })
+          .where(staleFilter);
+        await logActivity(
+          d,
+          updated,
+          "deal",
+          `${stale.length} unsigned offer(s) expired.`,
+        );
+      }
       return { ok: true, roundPhase: "negotiation" as const, currentRound: nextRound };
     }),
 

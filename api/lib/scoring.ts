@@ -327,12 +327,12 @@ export function evaluateCondition(
     }
 
     case "cross_bloc_deals": {
-      const partners = new Set(
-        myDeals(country, facts)
-          .map((d) => partnerOf(country, d))
-          .filter((p) => countryData(p)?.startingBloc !== myStartingBloc),
-      );
-      return threshold(partners.size >= cond.min);
+      // Counts accepted DEALS (not distinct partners) with countries whose
+      // starting bloc differs from the country's own starting bloc.
+      const count = myDeals(country, facts).filter(
+        (d) => countryData(partnerOf(country, d))?.startingBloc !== myStartingBloc,
+      ).length;
+      return threshold(count >= cond.min);
     }
 
     case "deal_types_diversity": {

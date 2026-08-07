@@ -139,8 +139,10 @@ function JoinCard() {
       const res = await join.mutateAsync({ code, name: name.trim() })
       saveSession({ token: res.token, roomCode: res.roomCode ?? code, role: 'student', name: name.trim(), country: res.country, flag: res.flag })
       navigate('/lobby')
-    } catch {
-      setError('Room not found — check the code with your teacher.')
+    } catch (e) {
+      // Show the server's actual reason (duplicate name, game already
+      // started, …) instead of masking every failure as "room not found".
+      setError(e instanceof Error ? e.message : 'Room not found — check the code with your teacher.')
       setShake((s) => s + 1)
     }
   }
@@ -350,7 +352,7 @@ function CreateCard() {
               variants={{ hidden: { opacity: 0, y: 8 }, show: { opacity: 1, y: 0 } }}
               type="button"
               whileTap={{ scale: 0.97 }}
-              onClick={() => navigate('/admin')}
+              onClick={() => navigate(`/admin?code=${created.roomCode}`)}
               className="mt-4 h-12 w-full rounded-xl bg-ink text-base font-extrabold text-paper"
             >
               Open Admin Dashboard →
@@ -388,7 +390,7 @@ const RULES = [
 function ResumeBanner() {
   const navigate = useNavigate()
   const [session, setSession] = useState(loadSession)
-  if (!session || session.role !== 'student' || !session.country) return null
+  if (!session || session.role !== 'student') return null
   return (
     <motion.div
       initial={{ y: -12, opacity: 0 }}
@@ -398,15 +400,17 @@ function ResumeBanner() {
     >
       <div className="mx-auto flex max-w-[1120px] flex-wrap items-center gap-3 px-4 py-3 md:px-8">
         <p className="text-sm font-bold text-gold-ink">
-          Welcome back! You are {session.flag} {session.country} in room {session.roomCode}.
+          {session.country
+            ? `Welcome back! You are ${session.flag ?? ''} ${session.country} in room ${session.roomCode}.`
+            : `Welcome back! You are in room ${session.roomCode} — pick your country.`}
         </p>
         <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => navigate('/play')}
+            onClick={() => navigate(session.country ? '/play' : '/lobby')}
             className="rounded-full bg-ink px-4 py-1.5 text-sm font-extrabold text-paper"
           >
-            Back to my dashboard →
+            {session.country ? 'Back to my dashboard →' : 'Back to the lobby →'}
           </button>
           <button
             type="button"

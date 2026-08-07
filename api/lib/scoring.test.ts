@@ -169,6 +169,44 @@ describe("no_deal_type_with_counterparty_of (USA bonus)", () => {
   });
 });
 
+describe("cross_bloc_deals mission (Canada bonus: 3 deals outside starting bloc)", () => {
+  const cond = missionOf("Canada", "bonus").condition;
+
+  it("counts DEALS, not distinct partners: 3 deals with the same outside-bloc partner complete it", () => {
+    // Canada starts in Nuclear Energy; Japan starts in Fossil Fuel.
+    const facts = makeFacts({
+      deals: [
+        deal("Canada", "Japan", "energy"),
+        deal("Canada", "Japan", "resources"),
+        deal("Japan", "Canada", "tech"),
+      ],
+    });
+    expect(evaluateCondition("Canada", cond, facts)).toBe("completed");
+  });
+
+  it("does not count deals with same-starting-bloc partners", () => {
+    // USA and France share Canada's starting bloc (Nuclear Energy).
+    const facts = makeFacts({
+      deals: [
+        deal("Canada", "USA", "energy"),
+        deal("Canada", "France", "resources"),
+        deal("Canada", "Japan", "tech"),
+      ],
+    });
+    expect(evaluateCondition("Canada", cond, facts)).toBe("on_track");
+  });
+
+  it("is on_track below the threshold and fails unmet at game end", () => {
+    const facts = makeFacts({
+      deals: [deal("Canada", "Japan", "energy"), deal("Canada", "Japan", "tech")],
+    });
+    expect(evaluateCondition("Canada", cond, facts)).toBe("on_track");
+    expect(evaluateCondition("Canada", cond, makeFacts({ ...facts, final: true }))).toBe(
+      "failed",
+    );
+  });
+});
+
 describe("biggest_bloc mission (ties count)", () => {
   const cond = missionOf("Saudi Arabia", "bonus").condition;
 

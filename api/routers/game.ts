@@ -123,10 +123,16 @@ export const gameRouter = createRouter({
       const myData = myCountryName ? COUNTRY_BY_NAME[myCountryName] : null;
 
       const sent = allDeals.filter(
-        (x) => x.status === "pending" && x.initiatorCountry === myCountryName,
+        (x) =>
+          x.status === "pending" &&
+          x.round === room.currentRound &&
+          x.initiatorCountry === myCountryName,
       );
       const incoming = allDeals.filter(
-        (x) => x.status === "pending" && x.targetCountry === myCountryName,
+        (x) =>
+          x.status === "pending" &&
+          x.round === room.currentRound &&
+          x.targetCountry === myCountryName,
       );
       const signed = allDeals.filter(
         (x) =>

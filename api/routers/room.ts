@@ -99,10 +99,13 @@ export const roomRouter = createRouter({
           message: "No room with that code. Check the code and try again.",
         });
       }
-      if (room.status === "ended") {
+      if (room.status !== "lobby") {
         throw new TRPCError({
           code: "CONFLICT",
-          message: "This game has already ended.",
+          message:
+            room.status === "ended"
+              ? "This game has already ended."
+              : "This game already started — ask your teacher.",
         });
       }
       const nameTaken = await d.query.players.findFirst({
