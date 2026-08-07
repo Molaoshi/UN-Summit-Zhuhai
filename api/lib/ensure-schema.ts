@@ -27,6 +27,7 @@ const DDL_STATEMENTS: DdlStatement[] = [
 	\`status\` enum('lobby','playing','ended') NOT NULL DEFAULT 'lobby',
 	\`current_round\` int NOT NULL DEFAULT 0,
 	\`round_phase\` enum('negotiation','round_end') NOT NULL DEFAULT 'negotiation',
+	\`active_countries\` json,
 	\`created_at\` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT \`rooms_id\` PRIMARY KEY(\`id\`),
 	CONSTRAINT \`rooms_code_unique\` UNIQUE(\`code\`)
@@ -126,6 +127,7 @@ const DDL_STATEMENTS: DdlStatement[] = [
 	\`round\` int NOT NULL,
 	\`kind\` varchar(32) NOT NULL,
 	\`message\` varchar(500) NOT NULL,
+	\`params\` json,
 	\`created_at\` timestamp NOT NULL DEFAULT (now()),
 	CONSTRAINT \`activity_log_id\` PRIMARY KEY(\`id\`)
 )`,
@@ -139,6 +141,48 @@ const DDL_STATEMENTS: DdlStatement[] = [
   { ddl: `CREATE INDEX \`score_adjustments_room_idx\` ON \`score_adjustments\` (\`room_id\`)`, ignoreDuplicate: true },
   { ddl: `CREATE INDEX \`activity_log_room_idx\` ON \`activity_log\` (\`room_id\`)`, ignoreDuplicate: true },
 ];
+
+/**
+ * Columns added after the first live deploy. `CREATE TABLE IF NOT EXISTS`
+ * never alters an existing table, so on the live Railway database we inspect
+ * information_schema and ALTER TABLE only the columns that are missing.
+ * (Same approved raw-DDL exception as the CREATE TABLE statements above.)
+ */
+const ENSURE_COLUMNS: { table: string; column: string; ddl: string }[] = [
+  {
+    table: "rooms",
+    column: "active_countries",
+    ddl: "ALTER TABLE `rooms` ADD COLUMN `active_countries` json NULL AFTER `round_phase`",
+  },
+  {
+    table: "activity_log",
+    column: "params",
+    ddl: "ALTER TABLE `activity_log` ADD COLUMN `params` json NULL AFTER `message`",
+  },
+];
+
+async function ensureColumns(): Promise<void> {
+  const db = getDb();
+  for (const col of ENSURE_COLUMNS) {
+    // SELECT DATABASE() pins the check to the connected schema.
+    const res = (await db.execute(
+      sql.raw(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS ` +
+          `WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '${col.table}' ` +
+          `AND COLUMN_NAME = '${col.column}'`,
+      ),
+    )) as unknown;
+    // mysql2 returns [rows, fields]; tolerate a bare rows array too.
+    const rows: { COLUMN_NAME?: string }[] = Array.isArray(res)
+      ? Array.isArray(res[0])
+        ? (res[0] as { COLUMN_NAME?: string }[])
+        : (res as { COLUMN_NAME?: string }[])
+      : [];
+    if (rows.some((r) => r && r.COLUMN_NAME === col.column)) continue;
+    await db.execute(sql.raw(col.ddl));
+    console.log(`[ensure-schema] added column ${col.table}.${col.column}`);
+  }
+}
 
 let ensured = false;
 let inflight: Promise<boolean> | null = null;
@@ -160,6 +204,15 @@ async function runEnsure(): Promise<boolean> {
       if (stmt.ignoreDuplicate && isDuplicateIndexError(err)) continue;
       throw err;
     }
+  }
+  // Evolve pre-existing live tables (CREATE TABLE IF NOT EXISTS never adds
+  // columns to an existing table). Duplicate-column (1060) can happen when
+  // two instances race the same ALTER — harmless, treat as done.
+  try {
+    await ensureColumns();
+  } catch (err) {
+    const e = err as { errno?: number };
+    if (e?.errno !== 1060) throw err;
   }
   return true;
 }

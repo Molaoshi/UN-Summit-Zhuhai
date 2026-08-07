@@ -13,11 +13,11 @@ import {
   type Deal,
 } from "@db/schema";
 import {
-  COUNTRIES,
   COUNTRY_BY_NAME,
   DEAL_TYPES,
   MAX_DEAL_ACTIONS_PER_ROUND,
   powerCardsOf,
+  type CountryData,
 } from "@contracts/game-data";
 import {
   biggestBlocNames,
@@ -28,6 +28,8 @@ import {
 import { createRouter, publicQuery } from "../middleware";
 import {
   actionsUsed,
+  activeCountriesOf,
+  activeCountryData,
   buildFacts,
   currentBlocs,
   db,
@@ -76,7 +78,15 @@ function feedEntry(d: Deal) {
   return {
     id: d.id,
     round: d.round,
+    kind: "deal_accepted" as const,
     message: `${d.initiatorCountry} signed a ${DEAL_TYPES[d.dealType]} deal with ${d.targetCountry}.`,
+    params: {
+      a: d.initiatorCountry,
+      b: d.targetCountry,
+      dealType: d.dealType,
+      power: d.powerCard,
+      round: d.round,
+    },
     initiatorCountry: d.initiatorCountry,
     targetCountry: d.targetCountry,
     dealTypeLabel: DEAL_TYPES[d.dealType],
@@ -84,17 +94,21 @@ function feedEntry(d: Deal) {
   };
 }
 
-function espionagePayload(countryName: string, facts: GameFacts) {
+function espionagePayload(
+  countryName: string,
+  facts: GameFacts,
+  active: CountryData[],
+) {
   const me = COUNTRY_BY_NAME[countryName];
   if (!me?.hasEspionage) return null;
   const peek = facts.peeks.find((p) => p.country === countryName) ?? null;
   const peekedPrivate = peek
     ? (COUNTRY_BY_NAME[peek.peekedCountry]?.missions.find(
         (m) => m.slot === "private",
-      )?.text ?? null)
+      ) ?? null)
     : null;
   return {
-    allPowerCards: COUNTRIES.map((c) => ({
+    allPowerCards: active.map((c) => ({
       country: c.name,
       flag: c.flag,
       assets: c.assets,
@@ -103,7 +117,8 @@ function espionagePayload(countryName: string, facts: GameFacts) {
     peek: {
       used: !!peek,
       peekedCountry: peek?.peekedCountry ?? null,
-      peekedPrivateMission: peekedPrivate,
+      peekedPrivateMission: peekedPrivate?.text ?? null,
+      peekedPrivateMissionZh: peekedPrivate?.textZh ?? null,
     },
   };
 }
@@ -146,6 +161,7 @@ export const gameRouter = createRouter({
         : 0;
 
       const accepted = allDeals.filter((x) => x.status === "accepted");
+      const active = activeCountryData(room);
 
       return {
         room: {
@@ -154,6 +170,7 @@ export const gameRouter = createRouter({
           currentRound: room.currentRound,
           roundPhase: room.roundPhase,
         },
+        activeCountries: activeCountriesOf(room),
         me: {
           name: player.name,
           isAdmin: player.isAdmin,
@@ -182,18 +199,22 @@ export const gameRouter = createRouter({
           max: MAX_DEAL_ACTIONS_PER_ROUND,
         },
         feed: accepted.map(feedEntry),
-        publicMissions: COUNTRIES.map((c) => ({
+        publicMissions: active.map((c) => ({
           country: c.name,
+          countryZh: c.nameZh ?? c.name,
           flag: c.flag,
           text: c.missions.find((m) => m.slot === "public")!.text,
+          textZh:
+            c.missions.find((m) => m.slot === "public")!.textZh ??
+            c.missions.find((m) => m.slot === "public")!.text,
           status:
             evaluateMissions(c.name, facts).find((m) => m.slot === "public")
               ?.status ?? "on_track",
         })),
-        // Current bloc of every country — names only, no scores.
+        // Current bloc of every active country — names only, no scores.
         blocs,
         espionage: myCountryName
-          ? espionagePayload(myCountryName, facts)
+          ? espionagePayload(myCountryName, facts, active)
           : null,
       };
     }),
@@ -212,9 +233,11 @@ export const gameRouter = createRouter({
         .where(eq(players.roomId, room.id))
         .orderBy(asc(players.id));
 
+      const active = activeCountryData(room);
       const countries = await Promise.all(
-        COUNTRIES.map(async (c) => ({
+        active.map(async (c) => ({
           country: c.name,
+          countryZh: c.nameZh ?? c.name,
           flag: c.flag,
           bloc: facts.currentBlocs[c.name],
           playerName:
@@ -248,6 +271,7 @@ export const gameRouter = createRouter({
           currentRound: room.currentRound,
           roundPhase: room.roundPhase,
         },
+        activeCountries: activeCountriesOf(room),
         players: roomPlayers.map((p) => ({
           name: p.name,
           isAdmin: p.isAdmin,
@@ -285,13 +309,13 @@ export const gameRouter = createRouter({
       }
       const d = await db();
       // Case-insensitive match against existing blocs keeps names canonical.
-      const existing = await existingBlocNames(d, room.id);
+      const existing = await existingBlocNames(d, room);
       const match = existing.find(
         (b) => b.toLowerCase() === input.blocName.toLowerCase(),
       );
       const blocName = match ?? input.blocName;
 
-      const blocs = await currentBlocs(d, room.id);
+      const blocs = await currentBlocs(d, room);
       if (blocs[myCountry] === blocName) {
         return { ok: true, blocName, changed: false };
       }
@@ -304,10 +328,16 @@ export const gameRouter = createRouter({
       await logActivity(
         d,
         room,
-        "bloc",
+        "bloc_chosen",
         match
           ? `${myCountry} joined the ${blocName} bloc.`
           : `${myCountry} founded a new bloc: ${blocName}.`,
+        {
+          country: myCountry,
+          bloc: blocName,
+          founded: !match,
+          round: room.currentRound,
+        },
       );
       return { ok: true, blocName, changed: true };
     }),
@@ -328,10 +358,12 @@ export const gameRouter = createRouter({
     const d = await db();
     const facts = await buildFacts(d, room, { final: true });
     const allDeals = await roomDeals(d, room.id);
+    // Active roster only (unclaimed-but-active countries still appear).
+    const active = activeCountryData(room);
 
     // Final blocs with member lists.
     const blocMap = new Map<string, string[]>();
-    for (const c of COUNTRIES) {
+    for (const c of active) {
       const bloc = facts.currentBlocs[c.name];
       blocMap.set(bloc, [...(blocMap.get(bloc) ?? []), c.name]);
     }
@@ -346,16 +378,19 @@ export const gameRouter = createRouter({
       .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
 
     // Ranked scoreboard with full per-country breakdown.
-    const scoreboard = COUNTRIES.map((c) => ({
-      flag: c.flag,
-      ...computeScore(c.name, facts),
-    }))
+    const scoreboard = active
+      .map((c) => ({
+        flag: c.flag,
+        countryZh: c.nameZh ?? c.name,
+        ...computeScore(c.name, facts),
+      }))
       .sort((a, b) => b.total - a.total || a.country.localeCompare(b.country))
       .map((row, i) => ({ rank: i + 1, ...row }));
 
     return {
       roomCode: room.code,
       rounds: room.currentRound,
+      activeCountries: activeCountriesOf(room),
       blocs,
       winner: scoreboard[0] ?? null,
       scoreboard,

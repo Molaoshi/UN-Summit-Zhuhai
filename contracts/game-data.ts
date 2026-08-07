@@ -40,11 +40,15 @@ export interface AssetData {
 export interface MissionData {
   slot: MissionSlot;
   text: string;
+  /** Simplified Chinese translation of `text` (attached at module init). */
+  textZh?: string;
   condition: MissionCondition;
 }
 
 export interface CountryData {
   name: string;
+  /** Simplified Chinese country name (attached at module init). */
+  nameZh?: string;
   flag: string;
   startingBloc: string;
   assets: Record<AssetKey, AssetData>;
@@ -1099,6 +1103,77 @@ export const COUNTRIES: CountryData[] = [
 
 export const COUNTRY_NAMES = COUNTRIES.map((c) => c.name);
 
+/** Canonical roster of all 15 playable countries (display order). */
+export const ALL_COUNTRY_NAMES = COUNTRY_NAMES;
+
+/**
+ * Countries named in a country's missions that must also be active for those
+ * missions to stay evaluable. (Sweden's espionage peek is dynamic — no
+ * dependency.) USA and China are ALWAYS active (hard rule, see below).
+ */
+export const NAMED_DEPENDENCIES: Record<string, string[]> = {
+  "USA": ["China"],
+  "China": ["USA"],
+  "Saudi Arabia": ["USA", "China"],
+  "India": ["China"],
+  "South Korea": ["Japan"],
+};
+
+/** These two superpowers can never be removed from the roster. */
+export const ALWAYS_ACTIVE: readonly string[] = ["USA", "China"];
+
+export type ActiveCountriesResult =
+  | { ok: true; countries: string[]; added: string[] }
+  | { ok: false; error: string };
+
+/**
+ * Validate + normalize a teacher-selected country roster.
+ * - `undefined`/`null` means the full 15-country roster.
+ * - USA and China must be included (hard rule).
+ * - Only known country names; at least 2 countries.
+ * - Missing NAMED_DEPENDENCIES are auto-added (never an error); the returned
+ *   `added` list tells the caller which ones were pulled in.
+ * - Result is de-duplicated and in canonical ALL_COUNTRY_NAMES order.
+ */
+export function resolveActiveCountries(
+  input?: readonly string[] | null,
+): ActiveCountriesResult {
+  const requested = [...(input ?? ALL_COUNTRY_NAMES)];
+  const unknown = requested.filter((n) => !COUNTRY_BY_NAME[n]);
+  if (unknown.length > 0) {
+    return { ok: false, error: `Unknown country: ${unknown.join(", ")}.` };
+  }
+  const set = new Set(requested);
+  for (const required of ALWAYS_ACTIVE) {
+    if (!set.has(required)) {
+      return {
+        ok: false,
+        error: `${ALWAYS_ACTIVE.join(" and ")} must always be active.`,
+      };
+    }
+  }
+  // Close the set under NAMED_DEPENDENCIES (auto-add missing countries).
+  const added: string[] = [];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const name of [...set]) {
+      for (const dep of NAMED_DEPENDENCIES[name] ?? []) {
+        if (!set.has(dep)) {
+          set.add(dep);
+          added.push(dep);
+          changed = true;
+        }
+      }
+    }
+  }
+  if (set.size < 2) {
+    return { ok: false, error: "At least 2 countries must be active." };
+  }
+  const countries = ALL_COUNTRY_NAMES.filter((n) => set.has(n));
+  return { ok: true, countries, added };
+}
+
 export const COUNTRY_BY_NAME: Record<string, CountryData> = Object.fromEntries(
   COUNTRIES.map((c) => [c.name, c]),
 );
@@ -1125,4 +1200,185 @@ export function dealTypeForPower(
 export function countryHasPower(countryName: string, power: string): boolean {
   const c = COUNTRY_BY_NAME[countryName];
   return c ? powerCardsOf(c).includes(power) : false;
+}
+
+
+// ── Bilingual data (English + 简体中文) ────────────────────────────────────
+
+export type Lang = "en" | "zh";
+
+/** Simplified Chinese name per country (fall back to the English name). */
+export const COUNTRY_NAME_ZH: Record<string, string> = {
+  "China": "中国",
+  "USA": "美国",
+  "France": "法国",
+  "Saudi Arabia": "沙特阿拉伯",
+  "Canada": "加拿大",
+  "Sweden": "瑞典",
+  "Denmark": "丹麦",
+  "Chile": "智利",
+  "Kenya": "肯尼亚",
+  "New Zealand": "新西兰",
+  "India": "印度",
+  "Japan": "日本",
+  "South Korea": "韩国",
+  "Germany": "德国",
+  "Brazil": "巴西",
+};
+
+/** Simplified Chinese label per starting bloc (custom blocs fall back to raw). */
+export const BLOC_ZH: Record<string, string> = {
+  "Nuclear Energy": "核能联盟",
+  "Green Energy": "绿色能源联盟",
+  "Fossil Fuel": "化石燃料联盟",
+};
+
+/** Simplified Chinese label per deal type (keyed by DealTypeKey). */
+export const DEAL_TYPE_ZH: Record<DealTypeKey, string> = {
+  "military": "军事保护",
+  "resources": "基础设施",
+  "energy": "能源",
+  "tech": "科技",
+};
+
+/** Simplified Chinese label per power card name. */
+export const POWER_ZH: Record<string, string> = {
+  "Navy": "海军",
+  "Ballistic Missiles": "弹道导弹",
+  "Metals": "金属",
+  "Industry & Labor": "工业与劳动力",
+  "Fossil": "化石燃料",
+  "Renewable": "可再生能源",
+  "Semi Conductors": "半导体",
+  "Renewable Energy": "可再生能源技术",
+  "Aircraft": "飞机",
+  "Financial: USD": "美元金融",
+  "Nuclear": "核能",
+  "Software": "软件",
+  "Tourism": "旅游业",
+  "Fertile Land & Water": "耕地与水资源",
+  "Pharma": "制药",
+  "Agritech": "农业科技",
+  "Drones": "无人机",
+  "Currency": "货币",
+  "Chemical": "化工",
+  "Tanks & Artillery": "坦克与火炮",
+  "Espionage": "情报侦察",
+};
+
+/**
+ * Classroom-appropriate Simplified Chinese translations of all 45 mission
+ * texts, keyed by country then mission slot. Power-card / deal-type names
+ * match POWER_ZH / DEAL_TYPE_ZH.
+ */
+export const MISSION_TEXT_ZH: Record<string, Record<MissionSlot, string>> = {
+  "China": {
+    public: "与2个国家签署基础设施协议。",
+    private: "你签署的基础设施协议数量要超过美国签署的军事保护协议数量。",
+    bonus: "不要与任何同美国签署了军事保护协议的国家签署基础设施协议。",
+  },
+  "USA": {
+    public: "与2个国家签署军事保护协议。",
+    private: "你签署的军事保护协议数量要超过中国签署的基础设施协议数量。",
+    bonus: "不要与任何同中国签署了基础设施协议的国家签署军事保护协议。",
+  },
+  "France": {
+    public: "与2个国家签署军事保护协议。",
+    private: "保障你的粮食与工业供应：与拥有“工业与劳动力”的国家签署2份基础设施协议。",
+    bonus: "游戏结束时，成为一个至少有4个成员的联盟的一员。",
+  },
+  "Saudi Arabia": {
+    public: "提升海水淡化能力：与拥有“工业与劳动力”的国家签署至少1份协议，并与拥有“农业科技”的国家签署至少1份协议。",
+    private: "与美国签署1份军事保护协议，并与中国签署1份基础设施协议。",
+    bonus: "游戏结束时，成为最大联盟的成员。",
+  },
+  "Canada": {
+    public: "与2个国家签署能源协议（出口你的清洁能源）。",
+    private: "帮助能源匮乏的国家：与能源评级为3或更低的国家签署1份能源协议。",
+    bonus: "做桥梁建设者：与你起始联盟之外的国家签署至少3份协议。",
+  },
+  "Sweden": {
+    public: "签署1份军事保护协议和1份科技协议。",
+    private: "利用你的情报侦察能力：与你揭露了其秘密任务的国家签署1份协议。",
+    bonus: "总共签署至少4份协议。",
+  },
+  "Denmark": {
+    public: "与拥有“工业与劳动力”的国家签署2份基础设施协议。",
+    private: "利用你的外交自由（军事评级3或更低）：与你起始联盟之外的国家签署3份协议。",
+    bonus: "做多元化贸易者：签署3种不同类型的协议各至少1份。",
+  },
+  "Chile": {
+    public: "签署2份出口你金属资源的基础设施协议。",
+    private: "实现矿业现代化：与拥有“半导体”的国家签署1份科技协议。",
+    bonus: "游戏结束时，成为最大联盟的成员。",
+  },
+  "Kenya": {
+    public: "与拥有“工业与劳动力”的国家签署2份协议（任何类型），以吸引投资。",
+    private: "与拥有“弹道导弹”的国家签署1份军事保护协议。",
+    bonus: "利用你的外交自由：与你起始联盟之外的国家签署3份协议。",
+  },
+  "New Zealand": {
+    public: "签署2份出口你农业科技的科技协议。",
+    private: "与拥有“弹道导弹”的国家签署1份军事保护协议。",
+    bonus: "游戏结束时，成为最大联盟的成员。",
+  },
+  "India": {
+    public: "签署2份能源协议，以保障你不断增长的能源需求。",
+    private: "签署的协议总数要超过中国。",
+    bonus: "不要与中国签署任何协议。",
+  },
+  "Japan": {
+    public: "保障能源安全！签署2份能源协议。",
+    private: "实现能源多元化：与拥有“化石燃料”的国家签署1份能源协议，并与拥有“核能”的国家签署1份能源协议。",
+    bonus: "签署2份出口你的半导体／可再生能源技术的科技协议。",
+  },
+  "South Korea": {
+    public: "签署2份出口你半导体的科技协议。",
+    private: "与拥有“化石燃料”的国家签署1份能源协议。",
+    bonus: "签署的科技协议数量要超过日本。",
+  },
+  "Germany": {
+    public: "保障你的能源供应：签署2份能源协议。",
+    private: "与能源超级大国（能源评级9或更高：美国、加拿大或沙特阿拉伯）签署1份能源协议。",
+    bonus: "与你起始联盟之外的至少2个国家签署协议。",
+  },
+  "Brazil": {
+    public: "签署2份出口你金属和粮食的基础设施协议。",
+    private: "缩小你的技术差距：与拥有“半导体”的国家签署1份科技协议。",
+    bonus: "做桥梁建设者：与来自全部3个起始联盟的国家签署协议。",
+  },
+};
+
+// Attach the translations to the static data objects so `nameZh` / `textZh`
+// travel everywhere COUNTRIES / COUNTRY_BY_NAME are used.
+for (const c of COUNTRIES) {
+  c.nameZh = COUNTRY_NAME_ZH[c.name] ?? c.name;
+  for (const m of c.missions) {
+    m.textZh = MISSION_TEXT_ZH[c.name]?.[m.slot] ?? m.text;
+  }
+}
+
+/** Localized country name (English name is the fallback). */
+export function countryNameFor(name: string, lang: Lang): string {
+  return lang === "zh" ? (COUNTRY_NAME_ZH[name] ?? name) : name;
+}
+
+/** Localized bloc name; custom (player-founded) blocs keep their raw name. */
+export function blocNameFor(name: string, lang: Lang): string {
+  return lang === "zh" ? (BLOC_ZH[name] ?? name) : name;
+}
+
+/** Localized deal-type label. */
+export function dealTypeNameFor(type: DealTypeKey, lang: Lang): string {
+  return lang === "zh" ? DEAL_TYPE_ZH[type] : DEAL_TYPES[type];
+}
+
+/** Localized power-card name (raw name is the fallback). */
+export function powerNameFor(power: string, lang: Lang): string {
+  return lang === "zh" ? (POWER_ZH[power] ?? power) : power;
+}
+
+/** Localized mission text (English text is the fallback). */
+export function missionText(mission: MissionData, lang: Lang): string {
+  return lang === "zh" ? (mission.textZh ?? mission.text) : mission.text;
 }

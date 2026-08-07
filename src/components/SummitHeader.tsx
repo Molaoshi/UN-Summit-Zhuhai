@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { Copy } from 'lucide-react'
+import { LangToggle } from '@/lib/i18n'
 
 export interface SummitHeaderProps {
   /** Landing variant shows only logo + wordmark (no room/round UI). */
@@ -73,9 +74,11 @@ export default function SummitHeader({
                   <span className="font-mono font-semibold text-gold-ink">{player.score}</span>
                 </span>
               )}
+              <LangToggle />
             </div>
           </>
         )}
+        {variant === 'landing' && <LangToggle />}
       </div>
       {variant === 'game' && roundLabel && (
         <div className="flex justify-center pb-1 md:hidden">

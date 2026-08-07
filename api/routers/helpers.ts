@@ -18,6 +18,7 @@ import {
   type Room,
 } from "@db/schema";
 import {
+  ALL_COUNTRY_NAMES,
   COUNTRIES,
   MAX_DEAL_ACTIONS_PER_ROUND,
   type MissionSlot,
@@ -111,18 +112,36 @@ export function requireCountry(player: Player): string {
 
 // ── Activity log ───────────────────────────────────────────────────────────
 
+/** Structured params stored alongside the English message for i18n rendering. */
+export type ActivityParams = Record<string, unknown>;
+
 export async function logActivity(
   d: Db,
   room: Room,
   kind: string,
   message: string,
+  params?: ActivityParams,
 ): Promise<void> {
   await d.insert(activityLog).values({
     roomId: room.id,
     round: room.currentRound,
     kind,
     message,
+    params: params ?? null,
   });
+}
+
+// ── Active country roster ──────────────────────────────────────────────────
+
+/** The room's playable roster. NULL column = the full 15-country roster. */
+export function activeCountriesOf(room: Room): string[] {
+  return room.activeCountries ?? ALL_COUNTRY_NAMES;
+}
+
+/** Active roster as a CountryData list, in canonical order. */
+export function activeCountryData(room: Room) {
+  const active = new Set(activeCountriesOf(room));
+  return COUNTRIES.filter((c) => active.has(c.name));
 }
 
 // ── Deal action budget (3 per country per round) ───────────────────────────
@@ -168,17 +187,17 @@ export async function assertActionBudget(
 /** Current bloc per country = each country's latest membership row. */
 export async function currentBlocs(
   d: Db,
-  roomId: number,
+  room: Room,
 ): Promise<Record<string, string>> {
   const rows = await d
     .select()
     .from(blocMemberships)
-    .where(eq(blocMemberships.roomId, roomId))
+    .where(eq(blocMemberships.roomId, room.id))
     .orderBy(asc(blocMemberships.id));
   const map: Record<string, string> = {};
   for (const row of rows) map[row.country] = row.blocName; // latest wins
   // Fallback for countries with no row yet: their starting bloc.
-  for (const c of COUNTRIES) {
+  for (const c of activeCountryData(room)) {
     if (!map[c.name]) map[c.name] = c.startingBloc;
   }
   return map;
@@ -187,14 +206,14 @@ export async function currentBlocs(
 /** All distinct bloc names in this room (starting blocs + custom). */
 export async function existingBlocNames(
   d: Db,
-  roomId: number,
+  room: Room,
 ): Promise<string[]> {
   const rows = await d
     .select({ blocName: blocMemberships.blocName })
     .from(blocMemberships)
-    .where(eq(blocMemberships.roomId, roomId));
+    .where(eq(blocMemberships.roomId, room.id));
   const names = new Set(rows.map((r) => r.blocName));
-  for (const c of COUNTRIES) names.add(c.startingBloc);
+  for (const c of activeCountryData(room)) names.add(c.startingBloc);
   return [...names];
 }
 
@@ -222,7 +241,7 @@ export async function buildFacts(
     targetPoints: row.targetPoints,
   }));
 
-  const blocs = await currentBlocs(d, room.id);
+  const blocs = await currentBlocs(d, room);
 
   const peekRows = await d
     .select()

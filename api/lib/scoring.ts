@@ -71,6 +71,8 @@ export type MissionStatus = "completed" | "on_track" | "at_risk" | "failed";
 export interface MissionResult {
   slot: MissionSlot;
   text: string;
+  /** Simplified Chinese mission text (falls back to English). */
+  textZh: string;
   status: MissionStatus;
   points: number;
   overridden: boolean;
@@ -402,6 +404,7 @@ export function evaluateMissions(
     return {
       slot: m.slot,
       text: m.text,
+      textZh: m.textZh ?? m.text,
       status,
       points: status === "completed" ? MISSION_POINTS : 0,
       overridden: !!override,

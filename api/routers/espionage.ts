@@ -7,7 +7,13 @@ import { and, eq } from "drizzle-orm";
 import { espionagePeeks } from "@db/schema";
 import { COUNTRY_BY_NAME } from "@contracts/game-data";
 import { createRouter, publicQuery } from "../middleware";
-import { db, logActivity, requireCountry, requirePlayer } from "./helpers";
+import {
+  activeCountriesOf,
+  db,
+  logActivity,
+  requireCountry,
+  requirePlayer,
+} from "./helpers";
 
 export const espionageRouter = createRouter({
   /**
@@ -37,6 +43,12 @@ export const espionageRouter = createRouter({
       const target = COUNTRY_BY_NAME[input.country];
       if (!target) {
         throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown country." });
+      }
+      if (!activeCountriesOf(room).includes(target.name)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${target.name} is not in this game's roster.`,
+        });
       }
       if (target.name === myCountry) {
         throw new TRPCError({
@@ -68,13 +80,15 @@ export const espionageRouter = createRouter({
       await logActivity(
         d,
         room,
-        "espionage",
+        "espionage_peek",
         `${myCountry} used Espionage to peek at ${target.name}'s secret file.`,
+        { country: myCountry, target: target.name },
       );
       return {
         ok: true,
         peekedCountry: target.name,
         privateMission: privateMission.text,
+        privateMissionZh: privateMission.textZh ?? privateMission.text,
       };
     }),
 });

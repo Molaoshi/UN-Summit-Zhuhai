@@ -5,9 +5,11 @@ import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { and, eq } from "drizzle-orm";
 import { players } from "@db/schema";
-import { COUNTRIES, COUNTRY_BY_NAME } from "@contracts/game-data";
+import { COUNTRY_BY_NAME } from "@contracts/game-data";
 import { createRouter, publicQuery } from "../middleware";
 import {
+  activeCountriesOf,
+  activeCountryData,
   db,
   logActivity,
   requireAdmin,
@@ -22,7 +24,7 @@ const viewerInput = z.object({
 });
 
 export const lobbyRouter = createRouter({
-  /** Seat map: all 15 countries with claimed player names. */
+  /** Seat map: the room's ACTIVE countries with claimed player names. */
   state: publicQuery.input(viewerInput).query(async ({ input }) => {
     const { room } = await requireViewer(input);
     const d = await db();
@@ -31,10 +33,12 @@ export const lobbyRouter = createRouter({
       .from(players)
       .where(eq(players.roomId, room.id));
 
-    const seats = COUNTRIES.map((c) => {
+    const active = activeCountryData(room);
+    const seats = active.map((c) => {
       const holder = roomPlayers.find((p) => p.countryName === c.name);
       return {
         country: c.name,
+        countryZh: c.nameZh ?? c.name,
         flag: c.flag,
         startingBloc: c.startingBloc,
         claimedBy: holder?.name ?? null,
@@ -45,6 +49,7 @@ export const lobbyRouter = createRouter({
       status: room.status,
       currentRound: room.currentRound,
       roundPhase: room.roundPhase,
+      activeCountries: activeCountriesOf(room),
       seats,
       unseated: roomPlayers
         .filter((p) => !p.countryName && !p.isAdmin)
@@ -76,6 +81,12 @@ export const lobbyRouter = createRouter({
           message: "Unknown country.",
         });
       }
+      if (!activeCountriesOf(room).includes(country.name)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${country.name} is not in this game's roster. Ask your teacher.`,
+        });
+      }
       if (player.countryName === country.name) {
         return { ok: true, country: country.name };
       }
@@ -100,8 +111,9 @@ export const lobbyRouter = createRouter({
       await logActivity(
         d,
         room,
-        "lobby",
+        "seat_claimed",
         `${player.name} claimed ${country.flag} ${country.name}.`,
+        { player: player.name, country: country.name },
       );
       return { ok: true, country: country.name };
     }),
@@ -132,8 +144,9 @@ export const lobbyRouter = createRouter({
       await logActivity(
         d,
         room,
-        "lobby",
+        "seat_released",
         `Teacher released ${input.country} (was ${holder.name}).`,
+        { country: input.country, player: holder.name },
       );
       return { ok: true, released: true };
     }),

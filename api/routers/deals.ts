@@ -16,6 +16,7 @@ import { computeDealPoints } from "../lib/scoring";
 import { createRouter, publicQuery } from "../middleware";
 import {
   assertActionBudget,
+  activeCountriesOf,
   currentBlocs,
   db,
   logActivity,
@@ -96,6 +97,12 @@ export const dealsRouter = createRouter({
           message: "Unknown target country.",
         });
       }
+      if (!activeCountriesOf(room).includes(target.name)) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `${target.name} is not in this game's roster.`,
+        });
+      }
       if (target.name === myCountry) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -149,8 +156,15 @@ export const dealsRouter = createRouter({
       await logActivity(
         d,
         room,
-        "deal",
+        "deal_sent",
         `${myCountry} offers a ${DEAL_TYPES[dealType]} deal (${input.powerCard}) to ${target.name}.`,
+        {
+          a: myCountry,
+          b: target.name,
+          dealType,
+          power: input.powerCard,
+          round: room.currentRound,
+        },
       );
       return {
         ok: true,
@@ -185,7 +199,7 @@ export const dealsRouter = createRouter({
 
       // Points: bloc alignment AT SIGNING TIME (current blocs), with the
       // freeCrossBloc exemption handled inside the scoring engine.
-      const blocs = await currentBlocs(d, room.id);
+      const blocs = await currentBlocs(d, room);
       const points = computeDealPoints(
         deal.initiatorCountry,
         deal.targetCountry,
@@ -211,8 +225,15 @@ export const dealsRouter = createRouter({
       await logActivity(
         d,
         room,
-        "deal",
+        "deal_accepted",
         `${deal.initiatorCountry} signed a ${DEAL_TYPES[deal.dealType]} deal with ${deal.targetCountry}.`,
+        {
+          a: deal.initiatorCountry,
+          b: deal.targetCountry,
+          dealType: deal.dealType,
+          power: deal.powerCard,
+          round: deal.round,
+        },
       );
       return { ok: true, points };
     }),
@@ -260,10 +281,19 @@ export const dealsRouter = createRouter({
       await logActivity(
         d,
         room,
-        "deal",
+        "deal_cancelled",
         isTarget
           ? `${myCountry} rejected a ${DEAL_TYPES[deal.dealType]} offer from ${deal.initiatorCountry}.`
           : `${myCountry} cancelled their ${DEAL_TYPES[deal.dealType]} offer to ${deal.targetCountry}.`,
+        {
+          a: deal.initiatorCountry,
+          b: deal.targetCountry,
+          dealType: deal.dealType,
+          power: deal.powerCard,
+          by: myCountry,
+          rejected: isTarget,
+          round: deal.round,
+        },
       );
       return { ok: true };
     }),

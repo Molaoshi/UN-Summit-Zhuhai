@@ -12,9 +12,9 @@ import {
   rooms,
   scoreAdjustments,
 } from "@db/schema";
-import { COUNTRY_BY_NAME } from "@contracts/game-data";
+import { COUNTRY_BY_NAME, resolveActiveCountries } from "@contracts/game-data";
 import { createRouter, publicQuery } from "../middleware";
-import { db, logActivity, requireAdmin } from "./helpers";
+import { activeCountriesOf, db, logActivity, requireAdmin } from "./helpers";
 
 const adminAuth = { code: z.string().min(1), pin: z.string().min(1) };
 
@@ -39,8 +39,9 @@ export const adminRouter = createRouter({
       await logActivity(
         d,
         updated,
-        "game",
+        "game_started",
         "The UN Summit is open! Round 1 begins — declare your public missions.",
+        { round: 1 },
       );
       return { ok: true, status: "playing" as const, currentRound: 1 };
     }),
@@ -72,8 +73,9 @@ export const adminRouter = createRouter({
         await logActivity(
           d,
           room,
-          "game",
+          "round_closed",
           `Round ${room.currentRound} is ending — choose your blocs!`,
+          { round: room.currentRound },
         );
         return { ok: true, roundPhase: "round_end" as const, currentRound: room.currentRound };
       }
@@ -86,8 +88,9 @@ export const adminRouter = createRouter({
       await logActivity(
         d,
         updated,
-        "game",
+        "round_started",
         `Round ${nextRound} begins. You have 3 new deal actions.`,
+        { round: nextRound },
       );
       // Expire stale pending offers from earlier rounds.
       const staleFilter = and(
@@ -104,8 +107,9 @@ export const adminRouter = createRouter({
         await logActivity(
           d,
           updated,
-          "deal",
+          "offers_expired",
           `${stale.length} unsigned offer(s) expired.`,
+          { count: stale.length, round: nextRound },
         );
       }
       return { ok: true, roundPhase: "negotiation" as const, currentRound: nextRound };
@@ -130,8 +134,9 @@ export const adminRouter = createRouter({
       await logActivity(
         d,
         room,
-        "game",
+        "game_ended",
         "The Summit has ended. Final scores are revealed!",
+        {},
       );
       return { ok: true, status: "ended" as const };
     }),
@@ -163,8 +168,14 @@ export const adminRouter = createRouter({
       await logActivity(
         d,
         room,
-        "admin",
+        "override_mission",
         `Teacher marked ${input.country}'s ${input.slot} mission as ${input.status}${input.note ? ` (${input.note})` : ""}.`,
+        {
+          country: input.country,
+          slot: input.slot,
+          status: input.status,
+          note: input.note ?? null,
+        },
       );
       return { ok: true };
     }),
@@ -195,8 +206,9 @@ export const adminRouter = createRouter({
       await logActivity(
         d,
         room,
-        "admin",
+        "adjust_score",
         `Teacher adjusted ${input.country}'s score by ${sign}${input.delta}: ${input.reason}.`,
+        { country: input.country, delta: input.delta, reason: input.reason },
       );
       return { ok: true };
     }),
@@ -221,9 +233,83 @@ export const adminRouter = createRouter({
       await logActivity(
         d,
         room,
-        "admin",
+        "seat_released",
         `Teacher released ${input.country} (was ${holder.name}).`,
+        { country: input.country, player: holder.name },
       );
       return { ok: true, released: true };
+    }),
+
+  /**
+   * Teacher picks the country roster (lobby phase only, for small classes).
+   * USA/China are locked in; missing mission dependencies are auto-added.
+   * Players holding newly-removed countries are unclaimed (logged).
+   */
+  setCountries: publicQuery
+    .input(
+      z.object({
+        ...adminAuth,
+        countries: z.array(z.string().trim().min(1)).min(1),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const room = await requireAdmin(input.code, input.pin);
+      if (room.status !== "lobby") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "The country roster can only be changed in the lobby.",
+        });
+      }
+      const roster = resolveActiveCountries(input.countries);
+      if (!roster.ok) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: roster.error });
+      }
+      const d = await db();
+
+      // Unclaim players whose country just left the roster.
+      const previous = activeCountriesOf(room);
+      const next = new Set(roster.countries);
+      const removed = previous.filter((c) => !next.has(c));
+      const unclaimed: { country: string; player: string }[] = [];
+      for (const country of removed) {
+        const holder = await d.query.players.findFirst({
+          where: and(
+            eq(players.roomId, room.id),
+            eq(players.countryName, country),
+          ),
+        });
+        if (!holder) continue;
+        await d
+          .update(players)
+          .set({ countryName: null })
+          .where(eq(players.id, holder.id));
+        unclaimed.push({ country, player: holder.name });
+      }
+
+      await d
+        .update(rooms)
+        .set({ activeCountries: roster.countries })
+        .where(eq(rooms.id, room.id));
+
+      await logActivity(
+        d,
+        room,
+        "countries_updated",
+        `Teacher set the country roster (${roster.countries.length} countries)` +
+          `${roster.added.length ? `; auto-added ${roster.added.join(", ")} (mission dependencies)` : ""}` +
+          `${unclaimed.length ? `; released ${unclaimed.map((u) => `${u.country} (was ${u.player})`).join(", ")}` : ""}.`,
+        {
+          countries: roster.countries,
+          added: roster.added,
+          removed,
+          unclaimed,
+        },
+      );
+      return {
+        ok: true,
+        activeCountries: roster.countries,
+        addedCountries: roster.added,
+        unclaimed,
+      };
     }),
 });

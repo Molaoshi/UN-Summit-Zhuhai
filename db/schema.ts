@@ -7,6 +7,7 @@ import {
   boolean,
   timestamp,
   bigint,
+  json,
   index,
   uniqueIndex,
 } from "drizzle-orm/mysql-core";
@@ -26,6 +27,10 @@ export const rooms = mysqlTable("rooms", {
   roundPhase: mysqlEnum("round_phase", ["negotiation", "round_end"])
     .notNull()
     .default("negotiation"),
+  // Teacher-selected roster for small classes. NULL = all 15 countries.
+  // Validated with resolveActiveCountries() (USA/China always active,
+  // closed under NAMED_DEPENDENCIES).
+  activeCountries: json("active_countries").$type<string[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -165,6 +170,9 @@ export const activityLog = mysqlTable(
     round: int("round").notNull(),
     kind: varchar("kind", { length: 32 }).notNull(),
     message: varchar("message", { length: 500 }).notNull(),
+    // Structured payload for i18n rendering (e.g. {a, b, dealType, power,
+    // round}). NULL on rows written before localization existed.
+    params: json("params").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [index("activity_log_room_idx").on(table.roomId)],
