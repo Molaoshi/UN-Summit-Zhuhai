@@ -3,9 +3,12 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ChevronDown, Megaphone, Newspaper } from 'lucide-react'
 import BlocBadge from '@/components/BlocBadge'
 import EmptyState from '@/components/EmptyState'
-import StatusChip from '@/components/StatusChip'
+import StatusChip from '@/components/play/StatusChip'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DEAL_TYPES } from '@/lib/game-ui'
+import { useLang, useStrings } from '@/lib/i18n'
+import { activityMessage, blocName, countryName } from '@/lib/i18n/shared'
+import { playStrings } from '@/lib/i18n/play'
 import { cn } from '@/lib/utils'
 import {
   blocKeyFor,
@@ -34,6 +37,8 @@ export default function FeedTabs({
   className,
 }: FeedTabsProps) {
   const [expanded, setExpanded] = useState<string | null>(myCountryName)
+  const { lang } = useLang()
+  const s = useStrings(playStrings)
   const newestFirst = [...feed].reverse()
 
   // My row pinned to the top of the public-missions directory.
@@ -45,7 +50,7 @@ export default function FeedTabs({
 
   return (
     <section
-      aria-label="Summit feed and public missions"
+      aria-label={`${s.summitFeed} / ${s.publicMissions}`}
       className={cn(
         'rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-6',
         className,
@@ -58,14 +63,14 @@ export default function FeedTabs({
             className="gap-1.5 rounded-none border-b-[3px] border-transparent px-1 pb-2 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft shadow-none data-[state=active]:border-gold data-[state=active]:bg-transparent data-[state=active]:text-ink data-[state=active]:shadow-none"
           >
             <Newspaper className="h-4 w-4" aria-hidden />
-            Summit Feed
+            {s.summitFeed}
           </TabsTrigger>
           <TabsTrigger
             value="missions"
             className="gap-1.5 rounded-none border-b-[3px] border-transparent px-1 pb-2 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft shadow-none data-[state=active]:border-gold data-[state=active]:bg-transparent data-[state=active]:text-ink data-[state=active]:shadow-none"
           >
             <Megaphone className="h-4 w-4" aria-hidden />
-            Public Missions
+            {s.publicMissions}
           </TabsTrigger>
         </TabsList>
 
@@ -78,8 +83,8 @@ export default function FeedTabs({
             {newestFirst.length === 0 ? (
               <EmptyState
                 icon={Newspaper}
-                title="No news yet"
-                body="Signed deals will be announced here for the whole summit."
+                title={s.noNewsYet}
+                body={s.noNewsBody}
                 className="py-6"
               />
             ) : (
@@ -103,10 +108,11 @@ export default function FeedTabs({
                           aria-hidden
                         />
                         <p className="flex-1 text-sm font-semibold leading-5 text-ink">
-                          {entry.message}
+                          {activityMessage(entry.kind, entry.params, lang) ??
+                            entry.message}
                         </p>
                         <span className="shrink-0 font-mono text-xs font-semibold text-ink-faint">
-                          {feedTimestamp(entry.round, entry.createdAt)}
+                          {feedTimestamp(entry.round, entry.createdAt, lang)}
                         </span>
                       </motion.li>
                     )
@@ -127,7 +133,7 @@ export default function FeedTabs({
               {rows.map((row) => {
                 const isMe = row.country === myCountryName
                 const isOpen = expanded === row.country
-                const blocName = blocs[row.country] ?? ''
+                const rowBloc = blocs[row.country] ?? ''
                 return (
                   <li
                     key={row.country}
@@ -148,17 +154,17 @@ export default function FeedTabs({
                       <span className="min-w-0 flex-1">
                         <span className="flex flex-wrap items-center gap-2">
                           <span className="text-base font-extrabold text-ink">
-                            {row.country}
+                            {countryName(row.country, lang)}
                             {isMe && (
                               <span className="ml-1.5 text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink">
-                                You
+                                {s.you}
                               </span>
                             )}
                           </span>
-                          {blocName && (
+                          {rowBloc && (
                             <BlocBadge
-                              bloc={blocKeyFor(blocName, allBlocNames)}
-                              name={blocName}
+                              bloc={blocKeyFor(rowBloc, allBlocNames)}
+                              name={blocName(rowBloc, lang)}
                               size="sm"
                             />
                           )}
@@ -187,9 +193,16 @@ export default function FeedTabs({
                           transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
                           className="overflow-hidden"
                         >
-                          <p className="border-t border-hairline px-3.5 py-3 text-base leading-[26px] text-ink">
-                            {row.text}
-                          </p>
+                          <div className="border-t border-hairline px-3.5 py-3">
+                            <p className="text-base leading-[26px] text-ink">
+                              {row.text}
+                            </p>
+                            {row.textZh && row.textZh !== row.text && (
+                              <p className="mt-1 text-sm leading-[24px] text-ink-soft">
+                                {row.textZh}
+                              </p>
+                            )}
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>

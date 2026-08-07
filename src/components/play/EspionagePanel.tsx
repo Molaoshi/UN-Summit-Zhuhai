@@ -4,6 +4,9 @@ import { ChevronDown, Eye, Lock, Search } from 'lucide-react'
 import BlocBadge from '@/components/BlocBadge'
 import PowerChip from '@/components/PowerChip'
 import RatingBar from '@/components/RatingBar'
+import { useLang, useStrings } from '@/lib/i18n'
+import { blocName, countryName, powerName } from '@/lib/i18n/shared'
+import { playStrings } from '@/lib/i18n/play'
 import { cn } from '@/lib/utils'
 import type { AssetKey } from '@contracts/game-data'
 import {
@@ -36,6 +39,8 @@ export default function EspionagePanel({
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [confirmCountry, setConfirmCountry] = useState<string | null>(null)
+  const { lang } = useLang()
+  const s = useStrings(playStrings)
 
   const { peek } = espionage
   const others = espionage.allPowerCards.filter(
@@ -43,7 +48,11 @@ export default function EspionagePanel({
   )
   const q = query.trim().toLowerCase()
   const pickerTargets = q
-    ? others.filter((c) => c.country.toLowerCase().includes(q))
+    ? others.filter(
+        (c) =>
+          c.country.toLowerCase().includes(q) ||
+          countryName(c.country, lang).toLowerCase().includes(q),
+      )
     : others
 
   return (
@@ -56,17 +65,17 @@ export default function EspionagePanel({
     >
       <div className="mb-1 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink">
         <Eye className="h-3.5 w-3.5" aria-hidden />
-        Espionage · Classified
+        {s.espionageClassified}
       </div>
       <h2 className="mb-4 font-display text-2xl font-semibold text-ink">
-        Spy Dossiers
+        {s.spyDossiers}
       </h2>
 
       {/* All other countries' power cards, one open at a time */}
       <ul className="space-y-2">
         {others.map((c) => {
           const isOpen = openCountry === c.country
-          const blocName = blocs[c.country] ?? ''
+          const blocNameOf = blocs[c.country] ?? ''
           return (
             <li
               key={c.country}
@@ -82,12 +91,12 @@ export default function EspionagePanel({
                   {c.flag}
                 </span>
                 <span className="flex-1 text-base font-extrabold text-ink">
-                  {c.country}
+                  {countryName(c.country, lang)}
                 </span>
-                {blocName && (
+                {blocNameOf && (
                   <BlocBadge
-                    bloc={blocKeyFor(blocName, allBlocNames)}
-                    name={blocName}
+                    bloc={blocKeyFor(blocNameOf, allBlocNames)}
+                    name={blocName(blocNameOf, lang)}
                     size="sm"
                   />
                 )}
@@ -113,7 +122,7 @@ export default function EspionagePanel({
                         <div key={asset}>
                           <div className="mb-1.5 flex items-center justify-between gap-2">
                             <span className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                              {asset}
+                              {s.assetLabels[asset]}
                             </span>
                             <RatingBar
                               dealType={toUiDealType(asset)}
@@ -124,7 +133,7 @@ export default function EspionagePanel({
                             {c.assets[asset].powers.map((p) => (
                               <PowerChip
                                 key={p}
-                                name={p}
+                                name={powerName(p, lang)}
                                 dealType={toUiDealType(asset)}
                                 espionage={p === 'Espionage'}
                               />
@@ -144,14 +153,14 @@ export default function EspionagePanel({
       {/* One-time private mission peek */}
       <div className="mt-6 border-t border-hairline pt-4">
         <h3 className="mb-2 text-lg font-extrabold text-ink">
-          Private Mission Peek
+          {s.privateMissionPeek}
         </h3>
 
         {peek.used ? (
           <div className="opacity-100">
             <p className="mb-3 flex items-center gap-1.5 text-sm font-bold text-ink-faint">
               <Lock className="h-4 w-4" aria-hidden />
-              Peek used — locked permanently.
+              {s.peekUsed}
             </p>
             {peek.peekedCountry && peek.peekedPrivateMission && (
               <motion.div
@@ -167,17 +176,19 @@ export default function EspionagePanel({
                   className="pointer-events-none absolute right-4 top-4 rounded border-2 border-status-failed px-2.5 py-1 text-sm font-extrabold uppercase tracking-[0.12em] text-status-failed"
                   aria-hidden
                 >
-                  Top Secret
+                  {s.topSecret}
                 </motion.span>
                 <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                  {flagOf(peek.peekedCountry)} {peek.peekedCountry} · Private
-                  mission
+                  {flagOf(peek.peekedCountry)}{' '}
+                  {s.privateMissionOf(countryName(peek.peekedCountry, lang))}
                 </p>
                 <p className="pr-24 text-lg leading-[30px] text-ink">
-                  {peek.peekedPrivateMission}
+                  {lang === 'zh'
+                    ? (peek.peekedPrivateMissionZh ?? peek.peekedPrivateMission)
+                    : peek.peekedPrivateMission}
                 </p>
                 <p className="mt-3 text-sm font-bold text-ink-faint">
-                  Only you can see this.
+                  {s.onlyYouSee}
                 </p>
               </motion.div>
             )}
@@ -185,8 +196,7 @@ export default function EspionagePanel({
         ) : (
           <div>
             <p className="mb-3 text-sm font-semibold text-ink-soft">
-              Choose 1 country to reveal its private mission. You can only do
-              this <strong>once</strong>.
+              {s.peekInstructions}
             </p>
             {!pickerOpen ? (
               <button
@@ -195,7 +205,7 @@ export default function EspionagePanel({
                 className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gold text-base font-extrabold text-gold-ink transition-colors hover:bg-gold-soft/50"
               >
                 <Eye className="h-5 w-5" aria-hidden />
-                Choose a country to spy on
+                {s.chooseSpyTarget}
               </button>
             ) : (
               <div>
@@ -208,7 +218,7 @@ export default function EspionagePanel({
                       setQuery(e.target.value)
                       setConfirmCountry(null)
                     }}
-                    placeholder="Search countries…"
+                    placeholder={s.searchCountries}
                     className="h-11 w-full bg-transparent text-base font-semibold text-ink outline-none placeholder:text-ink-faint"
                   />
                 </div>
@@ -218,8 +228,7 @@ export default function EspionagePanel({
                       {confirmCountry === c.country ? (
                         <div className="rounded-xl border-2 border-status-failed bg-status-failed-soft px-4 py-3">
                           <p className="mb-2 text-sm font-extrabold text-status-failed">
-                            You can only do this ONCE. Reveal {c.flag}{' '}
-                            {c.country}'s private mission?
+                            {c.flag} {s.confirmPeek(countryName(c.country, lang))}
                           </p>
                           <div className="flex gap-2">
                             <button
@@ -228,14 +237,14 @@ export default function EspionagePanel({
                               onClick={() => onPeek(c.country)}
                               className="flex h-10 flex-1 items-center justify-center rounded-lg bg-status-failed text-sm font-extrabold text-paper disabled:opacity-60"
                             >
-                              {peeking ? 'Revealing…' : 'Yes, reveal it'}
+                              {peeking ? s.revealing : s.yesReveal}
                             </button>
                             <button
                               type="button"
                               onClick={() => setConfirmCountry(null)}
                               className="flex h-10 flex-1 items-center justify-center rounded-lg border border-hairline bg-card text-sm font-extrabold text-ink"
                             >
-                              Go back
+                              {s.goBack}
                             </button>
                           </div>
                         </div>
@@ -249,10 +258,10 @@ export default function EspionagePanel({
                             {c.flag}
                           </span>
                           <span className="flex-1 text-sm font-extrabold text-ink">
-                            {c.country}
+                            {countryName(c.country, lang)}
                           </span>
                           <span className="text-xs font-extrabold uppercase tracking-[0.10em] text-gold-ink">
-                            Reveal
+                            {s.reveal}
                           </span>
                         </button>
                       )}

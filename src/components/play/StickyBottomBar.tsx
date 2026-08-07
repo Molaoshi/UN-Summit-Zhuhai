@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion'
 import { Landmark, Send } from 'lucide-react'
-import ActionPips from '@/components/ActionPips'
+import ActionPips from '@/components/play/ActionPips'
+import { useStrings } from '@/lib/i18n'
+import { playStrings } from '@/lib/i18n/play'
 import { cn } from '@/lib/utils'
 
 export interface StickyBottomBarProps {
@@ -22,6 +24,7 @@ export default function StickyBottomBar({
   onChooseBloc,
 }: StickyBottomBarProps) {
   const exhausted = actionsRemaining <= 0
+  const s = useStrings(playStrings)
   return (
     <motion.div
       initial={{ y: 72 }}
@@ -37,7 +40,7 @@ export default function StickyBottomBar({
             className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-ink text-base font-extrabold text-paper"
           >
             <Landmark className="h-5 w-5" aria-hidden />
-            Choose my bloc
+            {s.chooseMyBloc}
           </button>
         ) : (
           <>
@@ -57,7 +60,7 @@ export default function StickyBottomBar({
               )}
             >
               <Send className="h-5 w-5" aria-hidden />
-              Send Offer
+              {s.sendOffer}
             </motion.button>
           </>
         )}

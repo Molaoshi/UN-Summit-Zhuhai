@@ -4,6 +4,9 @@ import BlocBadge from '@/components/BlocBadge'
 import PowerChip from '@/components/PowerChip'
 import RatingBar from '@/components/RatingBar'
 import { DEAL_TYPES } from '@/lib/game-ui'
+import { useLang, useStrings } from '@/lib/i18n'
+import { blocName, countryName, powerName } from '@/lib/i18n/shared'
+import { playStrings } from '@/lib/i18n/play'
 import type { AssetKey, CountryData } from '@contracts/game-data'
 import { ASSET_ORDER, blocKeyFor, toUiDealType } from './helpers'
 
@@ -16,12 +19,14 @@ export interface CountryDossierProps {
 /** My Country dossier: flag, bloc, special badges, assets + power cards. */
 export default function CountryDossier({
   country,
-  blocName,
+  blocName: rawBlocName,
   allBlocNames,
 }: CountryDossierProps) {
+  const { lang } = useLang()
+  const s = useStrings(playStrings)
   return (
     <section
-      aria-label="My country dossier"
+      aria-label={s.countryDossier}
       className="rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-6"
     >
       {/* Double-rule document header */}
@@ -30,7 +35,7 @@ export default function CountryDossier({
         style={{ boxShadow: '0 3px 0 -1.5px rgba(30,58,60,0.15)' }}
       >
         <span className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-          Country dossier
+          {s.countryDossier}
         </span>
       </div>
 
@@ -39,11 +44,11 @@ export default function CountryDossier({
           {country.flag}
         </span>
         <h2 className="font-display text-2xl font-semibold text-ink">
-          {country.name}
+          {countryName(country.name, lang)}
         </h2>
         <BlocBadge
-          bloc={blocKeyFor(blocName, allBlocNames)}
-          name={blocName}
+          bloc={blocKeyFor(rawBlocName, allBlocNames)}
+          name={blocName(rawBlocName, lang)}
           size="md"
           showIcon
         />
@@ -54,9 +59,8 @@ export default function CountryDossier({
           <p className="flex items-start gap-2 rounded-xl border-2 border-dashed border-gold bg-gold-soft/50 px-3 py-2 text-sm font-bold text-gold-ink">
             <Eye className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <span>
-              <span className="uppercase tracking-[0.10em]">Espionage</span> —
-              You can see every country's power cards, and peek at one private
-              mission.
+              <span className="uppercase tracking-[0.10em]">{s.espionageBadge}</span>{' '}
+              — {s.espionageDesc}
             </span>
           </p>
         )}
@@ -65,9 +69,9 @@ export default function CountryDossier({
             <Handshake className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
             <span>
               <span className="uppercase tracking-[0.10em]">
-                Free Trader · 3 pts everywhere
+                {s.freeTraderBadge}
               </span>{' '}
-              — Your military is 3 or less: every deal earns you 3 points.
+              — {s.freeTraderDesc}
             </span>
           </p>
         )}
@@ -98,7 +102,7 @@ export default function CountryDossier({
                     style={{ color: meta.color }}
                     aria-hidden
                   />
-                  {meta.asset}
+                  {s.assetLabels[asset]}
                 </h3>
                 <RatingBar dealType={uiType} value={data.rating} />
               </div>
@@ -116,7 +120,7 @@ export default function CountryDossier({
                     }}
                   >
                     <PowerChip
-                      name={p}
+                      name={powerName(p, lang)}
                       dealType={uiType}
                       espionage={p === 'Espionage'}
                     />

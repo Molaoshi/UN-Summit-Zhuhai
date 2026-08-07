@@ -15,10 +15,18 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import { trpc } from '@/providers/trpc'
 import { loadSession } from '@/lib/session'
+import { useLang, useStrings } from '@/lib/i18n'
+import {
+  activityMessage,
+  blocName,
+  countryName,
+  sharedStrings,
+} from '@/lib/i18n/shared'
+import { playStrings } from '@/lib/i18n/play'
 import SummitHeader from '@/components/SummitHeader'
-import NewsTicker from '@/components/NewsTicker'
-import MissionCard from '@/components/MissionCard'
-import DealTicket from '@/components/DealTicket'
+import NewsTicker from '@/components/play/NewsTicker'
+import MissionCard from '@/components/play/MissionCard'
+import DealTicket from '@/components/play/DealTicket'
 import EmptyState from '@/components/EmptyState'
 import Toast from '@/components/Toast'
 import RoundStatusBar from '@/components/play/RoundStatusBar'
@@ -51,6 +59,9 @@ export default function Play() {
   const navigate = useNavigate()
   const session = useMemo(() => loadSession(), [])
   const token = session?.token ?? ''
+  const { lang } = useLang()
+  const s = useStrings(playStrings)
+  const t = useStrings(sharedStrings)
 
   const [toast, setToast] = useState<ToastState | null>(null)
   const showToast = (message: string, icon: LucideIcon = CheckCircle2) =>
@@ -62,7 +73,7 @@ export default function Play() {
   }) => {
     const isConflict = error.data?.code === 'CONFLICT'
     showToast(
-      isConflict ? error.message : `Something went wrong — ${error.message}`,
+      isConflict ? error.message : s.toastError(error.message),
       isConflict ? AlertTriangle : XCircle,
     )
   }
@@ -110,7 +121,7 @@ export default function Play() {
     if (!data) return
     const r = data.room.currentRound
     if (prevRound.current !== null && r > prevRound.current) {
-      showToast(`Round ${r} has begun — 3 new deal actions!`, RotateCcw)
+      showToast(s.toastRoundBegan(r), RotateCcw)
     }
     prevRound.current = r
   }, [data])
@@ -130,7 +141,7 @@ export default function Play() {
           colors: ['#C49A33', '#2E6E6A', '#EADFBF'],
           origin: { y: 0.35 },
         })
-        showToast('Mission complete! +10 points', CheckCircle2)
+        showToast(s.toastMissionComplete, CheckCircle2)
       }
       prevMissions.current[m.slot] = m.status
     }
@@ -143,7 +154,7 @@ export default function Play() {
     if (prevIncoming.current !== null) {
       for (const deal of data.myDeals.incoming) {
         if (!prevIncoming.current.has(deal.id)) {
-          showToast(`New offer from ${deal.initiatorCountry}!`, Mail)
+          showToast(s.toastNewOffer(countryName(deal.initiatorCountry, lang)), Mail)
           break
         }
       }
@@ -210,11 +221,10 @@ export default function Play() {
         <div className="w-full max-w-md rounded-2xl border border-hairline bg-card p-8 text-center shadow-card">
           <WifiOff className="mx-auto mb-3 h-10 w-10 text-ink-faint" aria-hidden />
           <h1 className="mb-2 font-display text-2xl font-semibold text-ink">
-            Cannot reach the summit
+            {s.cannotReach}
           </h1>
           <p className="mb-6 text-base text-ink-soft">
-            {playerState.error?.message ??
-              'Connection lost — check your internet and try again.'}
+            {playerState.error?.message ?? s.connectionLostBody}
           </p>
           <div className="flex gap-3">
             <button
@@ -222,14 +232,14 @@ export default function Play() {
               onClick={() => refetch()}
               className="flex h-12 flex-1 items-center justify-center rounded-xl bg-ink text-base font-extrabold text-paper"
             >
-              Try again
+              {s.tryAgain}
             </button>
             <button
               type="button"
               onClick={() => navigate('/')}
               className="flex h-12 flex-1 items-center justify-center rounded-xl border border-hairline bg-paper text-base font-extrabold text-ink"
             >
-              Back to join
+              {s.backToJoin}
             </button>
           </div>
         </div>
@@ -243,18 +253,17 @@ export default function Play() {
         <div className="w-full max-w-md rounded-2xl border border-hairline bg-card p-8 text-center shadow-card">
           <UserX className="mx-auto mb-3 h-10 w-10 text-ink-faint" aria-hidden />
           <h1 className="mb-2 font-display text-2xl font-semibold text-ink">
-            No country seat
+            {s.noCountrySeat}
           </h1>
           <p className="mb-6 text-base text-ink-soft">
-            You have not claimed a country. Ask your teacher, or go back to the
-            lobby to pick a seat.
+            {s.noCountryBody}
           </p>
           <button
             type="button"
             onClick={() => navigate('/lobby')}
             className="flex h-12 w-full items-center justify-center rounded-xl bg-ink text-base font-extrabold text-paper"
           >
-            Go to lobby
+            {s.goToLobby}
           </button>
         </div>
       </div>
@@ -262,7 +271,9 @@ export default function Play() {
   }
 
   const isRoundEnd = data.room.roundPhase === 'round_end'
-  const tickerItems = [...data.feed].reverse().map((f) => f.message)
+  const tickerItems = [...data.feed]
+    .reverse()
+    .map((f) => activityMessage(f.kind, f.params, lang) ?? f.message)
   const missions = MISSION_ORDER.map((slot) =>
     data.myMissions.find((m) => m.slot === slot),
   ).filter((m) => m != null)
@@ -276,7 +287,10 @@ export default function Play() {
         onSuccess: (res) => {
           const deal = data.myDeals.incoming.find((d) => d.id === dealId)
           showToast(
-            `Deal signed with ${deal?.initiatorCountry ?? 'partner'} ✓ +${res.points.targetPoints} pts`,
+            s.toastDealSigned(
+              countryName(deal?.initiatorCountry ?? s.partnerFallback, lang),
+              res.points.targetPoints,
+            ),
           )
           refetch()
         },
@@ -291,7 +305,7 @@ export default function Play() {
       { token, dealId },
       {
         onSuccess: () => {
-          showToast('Offer rejected', XCircle)
+          showToast(s.toastOfferRejected, XCircle)
           refetch()
         },
         onSettled: () => setBusyDealId(null),
@@ -305,7 +319,7 @@ export default function Play() {
       { token, dealId },
       {
         onSuccess: () => {
-          showToast('Offer cancelled', XCircle)
+          showToast(s.toastOfferCancelled, XCircle)
           refetch()
         },
         onSettled: () => setBusyDealId(null),
@@ -323,20 +337,20 @@ export default function Play() {
       {
         onSuccess: () => {
           setOfferSheetOpen(false)
-          showToast(`Offer sent to ${offer.targetCountry} ✓`)
+          showToast(s.toastOfferSent(countryName(offer.targetCountry, lang)))
           refetch()
         },
       },
     )
   }
 
-  const handleChooseBloc = (blocName: string) => {
+  const handleChooseBloc = (chosenBloc: string) => {
     chooseBloc.mutate(
-      { token, blocName },
+      { token, blocName: chosenBloc },
       {
         onSuccess: () => {
           setBlocChosen(true)
-          showToast(`You are now in ${blocName} ✓`)
+          showToast(s.toastBlocChosen(blocName(chosenBloc, lang)))
           refetch()
         },
       },
@@ -348,7 +362,7 @@ export default function Play() {
       { token, country },
       {
         onSuccess: () => {
-          showToast(`${country}'s private mission revealed`, CheckCircle2)
+          showToast(s.toastPeekRevealed(countryName(country, lang)), CheckCircle2)
           refetch()
         },
       },
@@ -362,15 +376,15 @@ export default function Play() {
         variant="game"
         roomCode={data.room.code}
         roundNumber={data.room.currentRound}
-        phase={isRoundEnd ? 'ROUND END' : 'NEGOTIATION'}
+        phase={isRoundEnd ? t.phase.round_end : t.phase.negotiation}
         player={{
           flag: myCountry.flag,
-          country: myCountry.name,
+          country: countryName(myCountry.name, lang),
           score: score.total,
         }}
         onCopyRoomCode={() => {
           navigator.clipboard?.writeText(data.room.code).catch(() => {})
-          showToast('Room code copied ✓')
+          showToast(s.toastRoomCodeCopied)
         }}
       />
 
@@ -378,7 +392,7 @@ export default function Play() {
       {playerState.isError && (
         <div className="bg-status-failed px-4 py-2 text-center text-sm font-extrabold text-paper">
           <WifiOff className="mr-1.5 inline h-4 w-4" aria-hidden />
-          Connection lost — retrying…
+          {s.connectionLostRetrying}
         </div>
       )}
 
@@ -404,12 +418,12 @@ export default function Play() {
             />
           </div>
 
-          <section aria-label="My missions" className="order-2 lg:order-none">
+          <section aria-label={s.myMissionsTitle} className="order-2 lg:order-none">
             <p className="mb-1 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-              My missions · 10 pts each
+              {s.myMissionsEyebrow}
             </p>
             <h2 className="mb-4 font-display text-2xl font-semibold text-ink">
-              My Missions
+              {s.myMissionsTitle}
             </h2>
             <div className="space-y-4">
               {missions.map((m) => {
@@ -422,20 +436,22 @@ export default function Play() {
                   myCountry,
                   blocs,
                   data.espionage?.peek.peekedCountry ?? null,
+                  lang,
                 )
                 const progressText = prog.checkedAtRoundEnd
-                  ? 'Checked at the end of each round'
+                  ? s.checkedAtRoundEnd
                   : prog.progress
                 return (
                   <div key={m.slot}>
                     {m.slot === 'public' && data.room.currentRound === 1 && (
                       <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-gold-soft px-3 py-1 text-xs font-extrabold text-gold-ink">
-                        Say it out loud in class!
+                        {s.sayItOutLoud}
                       </p>
                     )}
                     <MissionCard
                       kind={m.slot}
                       text={m.text}
+                      textZh={m.textZh}
                       status={toStatusKey(m.status)}
                       progressText={progressText}
                       showWatermark
@@ -493,19 +509,19 @@ export default function Play() {
             />
           </div>
 
-          <section aria-label="My signed deals" className="order-4 lg:order-none">
+          <section aria-label={s.myDealsTitle} className="order-4 lg:order-none">
             <p className="mb-1 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-              My signed deals
+              {s.mySignedDealsEyebrow}
             </p>
             <h2 className="mb-4 font-display text-2xl font-semibold text-ink">
-              My Deals
+              {s.myDealsTitle}
             </h2>
             {data.myDeals.signed.length === 0 ? (
               <div className="rounded-2xl border border-hairline bg-card shadow-card">
                 <EmptyState
                   icon={Handshake}
-                  title="No signed deals yet"
-                  body="Your signed treaties will appear here."
+                  title={s.noSignedDeals}
+                  body={s.noSignedDealsBody}
                 />
               </div>
             ) : (

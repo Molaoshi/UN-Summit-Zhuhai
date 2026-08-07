@@ -3,15 +3,16 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, Search, Send } from 'lucide-react'
 import BottomSheet from '@/components/BottomSheet'
 import BlocBadge from '@/components/BlocBadge'
-import DealTicket from '@/components/DealTicket'
+import DealTicket from '@/components/play/DealTicket'
 import PowerChip from '@/components/PowerChip'
 import RatingBar from '@/components/RatingBar'
 import { DEAL_TYPES } from '@/lib/game-ui'
+import { useLang, useStrings } from '@/lib/i18n'
+import { blocName, countryName, dealTypeName, powerName } from '@/lib/i18n/shared'
+import { playStrings } from '@/lib/i18n/play'
 import { cn } from '@/lib/utils'
 import {
   dealTypeForPower,
-  DEAL_TYPES as CONTRACT_DEAL_LABELS,
-  type AssetKey,
   type CountryData,
 } from '@contracts/game-data'
 import {
@@ -39,19 +40,6 @@ export interface SendOfferSheetProps {
   onSend: (offer: { powerCard: string; targetCountry: string; note?: string }) => void
 }
 
-const ASSET_LABELS: Record<AssetKey, string> = {
-  military: 'Military',
-  resources: 'Resources',
-  energy: 'Energy',
-  tech: 'Tech',
-}
-
-const STEP_TITLES = [
-  'What do you offer?',
-  'To which country?',
-  'Add a note? (optional)',
-]
-
 /** 3-step Send-Offer flow in a bottom sheet / dialog. */
 export default function SendOfferSheet({
   open,
@@ -69,6 +57,8 @@ export default function SendOfferSheet({
   const [target, setTarget] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [query, setQuery] = useState('')
+  const { lang } = useLang()
+  const s = useStrings(playStrings)
 
   // Reset the wizard every time it opens.
   useEffect(() => {
@@ -90,19 +80,22 @@ export default function SendOfferSheet({
     if (!q) return targets
     return targets.filter(
       (t) =>
-        t.name.toLowerCase().includes(q) || t.blocName.toLowerCase().includes(q),
+        t.name.toLowerCase().includes(q) ||
+        t.blocName.toLowerCase().includes(q) ||
+        countryName(t.name, lang).toLowerCase().includes(q) ||
+        blocName(t.blocName, lang).toLowerCase().includes(q),
     )
-  }, [targets, query])
+  }, [targets, query, lang])
 
   const targetData = target ? targets.find((t) => t.name === target) : null
   const canNext =
     (step === 0 && powerCard != null) || (step === 1 && target != null)
 
   return (
-    <BottomSheet open={open} onClose={onClose} title="Send a Deal Offer">
+    <BottomSheet open={open} onClose={onClose} title={s.sheetTitle}>
       {/* Progress dots */}
       <div className="mb-4 flex items-center gap-2" aria-hidden>
-        {STEP_TITLES.map((_, i) => (
+        {s.stepTitles.map((_, i) => (
           <span
             key={i}
             className={cn(
@@ -112,7 +105,7 @@ export default function SendOfferSheet({
           />
         ))}
         <span className="ml-2 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-          Step {step + 1} of 3
+          {s.stepOf(step + 1)}
         </span>
       </div>
 
@@ -125,7 +118,7 @@ export default function SendOfferSheet({
           transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
         >
           <h3 className="mb-4 text-xl font-extrabold text-ink">
-            {STEP_TITLES[step]}
+            {s.stepTitles[step]}
           </h3>
 
           {/* Step 1 — pick one of my power cards */}
@@ -135,7 +128,7 @@ export default function SendOfferSheet({
                 <div key={asset}>
                   <div className="mb-2 flex items-center justify-between gap-3">
                     <span className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                      {ASSET_LABELS[asset]}
+                      {s.assetLabels[asset]}
                     </span>
                     <RatingBar
                       dealType={toUiDealType(asset)}
@@ -146,7 +139,7 @@ export default function SendOfferSheet({
                     {myCountry.assets[asset].powers.map((p) => (
                       <PowerChip
                         key={p}
-                        name={p}
+                        name={powerName(p, lang)}
                         dealType={toUiDealType(asset)}
                         espionage={p === 'Espionage'}
                         selectable
@@ -172,11 +165,11 @@ export default function SendOfferSheet({
                       style={{ color: dealMeta.color }}
                       aria-hidden
                     />
-                    This is an{' '}
+                    {s.thisIsDealPre}
                     <strong style={{ color: dealMeta.color }}>
-                      {CONTRACT_DEAL_LABELS[dealTypeKey]}
-                    </strong>{' '}
-                    deal
+                      {dealTypeName(dealTypeKey, lang)}
+                    </strong>
+                    {s.thisIsDealPost}
                   </motion.p>
                 )}
               </AnimatePresence>
@@ -192,13 +185,13 @@ export default function SendOfferSheet({
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search countries…"
+                  placeholder={s.searchCountries}
                   className="h-11 w-full bg-transparent text-base font-semibold text-ink outline-none placeholder:text-ink-faint"
                 />
               </div>
               {filteredTargets.length === 0 ? (
                 <p className="py-6 text-center text-base font-semibold text-ink-faint">
-                  No countries match your search.
+                  {s.noCountriesMatch}
                 </p>
               ) : (
                 <ul className="max-h-[46dvh] space-y-2 overflow-y-auto pr-1">
@@ -227,11 +220,11 @@ export default function SendOfferSheet({
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-base font-extrabold text-ink">
-                              {t.name}
+                              {countryName(t.name, lang)}
                             </p>
                             <BlocBadge
                               bloc={blocKeyFor(t.blocName, allBlocNames)}
-                              name={t.blocName}
+                              name={blocName(t.blocName, lang)}
                               size="sm"
                             />
                           </div>
@@ -245,12 +238,12 @@ export default function SendOfferSheet({
                             title={
                               pts === 3
                                 ? sameBloc
-                                  ? '3 points — bloc member'
-                                  : '3 points — you are a Free Trader'
-                                : '2 points — different bloc'
+                                  ? s.ptsHintBlocMember
+                                  : s.ptsHintFreeTrader
+                                : s.ptsHintOutsideBloc
                             }
                           >
-                            {pts} pts
+                            {s.ptsChip(pts)}
                           </span>
                         </button>
                       </motion.li>
@@ -269,15 +262,15 @@ export default function SendOfferSheet({
                 value={note}
                 maxLength={80}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="e.g. in exchange for your support in the vote"
+                placeholder={s.notePlaceholder}
                 className="h-12 w-full rounded-xl border border-input bg-paper px-4 text-base font-semibold text-ink outline-none placeholder:text-ink-faint focus:border-gold"
               />
               <p className="mt-1.5 text-sm font-semibold text-ink-faint">
-                Notes are friendly words only — they don't change the score.
+                {s.noteHint}
               </p>
               <div className="mt-4">
                 <p className="mb-2 text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-                  Review your treaty
+                  {s.reviewTreaty}
                 </p>
                 <DealTicket
                   dealType={uiDealType}
@@ -307,7 +300,7 @@ export default function SendOfferSheet({
                 )}
               >
                 <Send className="h-5 w-5" aria-hidden />
-                {sending ? 'Sending…' : 'Send Offer'}
+                {sending ? s.sending : s.sendOffer}
               </motion.button>
             </div>
           )}
@@ -323,7 +316,7 @@ export default function SendOfferSheet({
             className="flex h-12 items-center gap-1.5 rounded-xl px-4 text-base font-extrabold text-ink-soft transition-colors hover:bg-paper-deep"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
-            {step === 0 ? 'Cancel' : 'Back'}
+            {step === 0 ? s.cancel : s.back}
           </button>
           <motion.button
             type="button"
@@ -335,7 +328,7 @@ export default function SendOfferSheet({
               !canNext && 'cursor-not-allowed opacity-40',
             )}
           >
-            Next
+            {s.next}
           </motion.button>
         </div>
       )}
@@ -346,7 +339,7 @@ export default function SendOfferSheet({
           className="mt-3 flex h-10 items-center gap-1.5 rounded-xl px-2 text-base font-extrabold text-ink-soft transition-colors hover:bg-paper-deep"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
-          Back
+          {s.back}
         </button>
       )}
     </BottomSheet>

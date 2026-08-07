@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { AlertCircle, Check, Landmark } from 'lucide-react'
 import BlocBadge from '@/components/BlocBadge'
+import { useLang, useStrings } from '@/lib/i18n'
+import { blocName } from '@/lib/i18n/shared'
+import { playStrings } from '@/lib/i18n/play'
 import { cn } from '@/lib/utils'
 import { blocKeyFor } from './helpers'
 
@@ -31,6 +34,8 @@ export default function BlocChoiceCard({
   const [selected, setSelected] = useState<string>(myCurrent)
   const [founding, setFounding] = useState(false)
   const [newName, setNewName] = useState('')
+  const { lang } = useLang()
+  const s = useStrings(playStrings)
 
   useEffect(() => {
     setSelected(myCurrent)
@@ -62,7 +67,7 @@ export default function BlocChoiceCard({
 
   return (
     <motion.section
-      aria-label="Bloc choice"
+      aria-label={s.blocOptions}
       initial={{ y: 16, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
@@ -71,14 +76,13 @@ export default function BlocChoiceCard({
     >
       <h2 className="flex items-center gap-2 text-lg font-extrabold text-ink">
         <AlertCircle className="h-5 w-5 text-status-atrisk" aria-hidden />
-        Round is ending — choose your bloc!
+        {s.blocChoiceTitle}
       </h2>
       <p className="mt-1.5 text-base leading-[26px] text-ink-soft">
-        Stay in your bloc, join another bloc, or found a new one. Blocs decide
-        how many points your deals earn (3 inside, 2 outside).
+        {s.blocChoiceBody}
       </p>
 
-      <div className="mt-4 space-y-2" role="radiogroup" aria-label="Bloc options">
+      <div className="mt-4 space-y-2" role="radiogroup" aria-label={s.blocOptions}>
         {options.map((opt) => {
           const isSelected = !founding && selected === opt.name
           const isCurrent = myCurrent === opt.name
@@ -101,13 +105,13 @@ export default function BlocChoiceCard({
             >
               <BlocBadge
                 bloc={blocKeyFor(opt.name, allBlocNames)}
-                name={opt.name}
+                name={blocName(opt.name, lang)}
                 size="md"
                 showIcon
               />
               <span className="flex-1 text-sm font-semibold text-ink-soft">
-                {opt.members} {opt.members === 1 ? 'member' : 'members'}
-                {isCurrent && ' · your current bloc'}
+                {s.memberCount(opt.members)}
+                {isCurrent && ` · ${s.yourCurrentBloc}`}
               </span>
               {isSelected && (
                 <motion.span
@@ -140,7 +144,7 @@ export default function BlocChoiceCard({
             <Landmark className="h-4 w-4" aria-hidden />
           </span>
           <span className="flex-1 text-base font-extrabold text-ink">
-            Found a new bloc
+            {s.foundNewBloc}
           </span>
           {founding && (
             <motion.span
@@ -165,12 +169,12 @@ export default function BlocChoiceCard({
               value={newName}
               maxLength={24}
               onChange={(e) => setNewName(e.target.value)}
-              placeholder="e.g. Pacific Alliance"
-              aria-label="New bloc name"
+              placeholder={s.newBlocPlaceholder}
+              aria-label={s.newBlocAria}
               className="h-12 w-full rounded-xl border border-input bg-paper px-4 text-base font-semibold text-ink outline-none placeholder:text-ink-faint focus:border-gold"
             />
             <p className="mt-1 text-xs font-semibold text-ink-faint">
-              {trimmed.length}/24 characters
+              {s.charCount(trimmed.length)}
             </p>
           </motion.div>
         )}
@@ -187,10 +191,10 @@ export default function BlocChoiceCard({
         )}
       >
         {choosing
-          ? 'Locking in…'
+          ? s.lockingIn
           : hasChosen
-            ? 'Change my choice'
-            : 'Lock in my bloc'}
+            ? s.changeMyChoice
+            : s.lockInBloc}
       </motion.button>
     </motion.section>
   )

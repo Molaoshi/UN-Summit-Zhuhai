@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Inbox, Info, Send, X } from 'lucide-react'
-import ActionPips from '@/components/ActionPips'
-import DealTicket from '@/components/DealTicket'
+import ActionPips from '@/components/play/ActionPips'
+import DealTicket from '@/components/play/DealTicket'
 import EmptyState from '@/components/EmptyState'
+import { useLang, useStrings } from '@/lib/i18n'
+import { countryName, dealTypeName, powerName } from '@/lib/i18n/shared'
+import { playStrings } from '@/lib/i18n/play'
 import { cn } from '@/lib/utils'
 import type { CountryData } from '@contracts/game-data'
 import { flagOf, myDealPoints, toUiDealType } from './helpers'
@@ -41,6 +44,8 @@ export default function DealActionsCard({
   onOpenSend,
 }: DealActionsCardProps) {
   const exhausted = actions.remaining <= 0
+  const { lang } = useLang()
+  const s = useStrings(playStrings)
   const [confirmCancelId, setConfirmCancelId] = useState<number | null>(null)
   const confirmTimer = useRef<number | null>(null)
 
@@ -64,12 +69,12 @@ export default function DealActionsCard({
 
   return (
     <section
-      aria-label="Deal actions"
+      aria-label={s.dealActionsTitle(round)}
       className="rounded-2xl border border-hairline bg-card p-5 shadow-card md:p-6"
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xs font-extrabold uppercase tracking-[0.10em] text-ink-soft">
-          Deal actions · Round {round}
+          {s.dealActionsTitle(round)}
         </h2>
         <ActionPips remaining={actions.remaining} total={actions.max} />
       </div>
@@ -84,8 +89,7 @@ export default function DealActionsCard({
             transition={{ duration: 0.25 }}
             className="mb-4 rounded-xl bg-paper-deep px-4 py-3 text-sm font-bold text-ink-soft"
           >
-            You used all {actions.max} actions this round. Watch the feed and
-            plan your next moves!
+            {s.actionsExhausted(actions.max)}
           </motion.p>
         ) : (
           <motion.p
@@ -97,19 +101,19 @@ export default function DealActionsCard({
             className="mb-4 flex items-center gap-1.5 text-sm font-semibold text-ink-faint"
           >
             <Info className="h-4 w-4 shrink-0" aria-hidden />
-            Sending, accepting, and cancelling each use 1 action.
+            {s.actionCostHint}
           </motion.p>
         )}
       </AnimatePresence>
 
       {/* 3a. Incoming offers — needs my answer */}
       <div className="mb-6">
-        <h3 className="mb-3 text-lg font-extrabold text-ink">Incoming offers</h3>
+        <h3 className="mb-3 text-lg font-extrabold text-ink">{s.incomingOffers}</h3>
         {incoming.length === 0 ? (
           <EmptyState
             icon={Inbox}
-            title="No offers yet"
-            body="Walk over to a classmate and ask for a deal!"
+            title={s.noOffersYet}
+            body={s.noOffersBody}
             className="py-6"
           />
         ) : (
@@ -126,8 +130,13 @@ export default function DealActionsCard({
                 >
                   <p className="mb-2 text-base text-ink">
                     {flagOf(deal.initiatorCountry)}{' '}
-                    <strong>{deal.initiatorCountry}</strong> offers you an{' '}
-                    <strong>{deal.dealTypeLabel}</strong> deal ({deal.powerCard})
+                    <strong>
+                      {s.offersYou(
+                        countryName(deal.initiatorCountry, lang),
+                        dealTypeName(deal.dealType, lang),
+                        powerName(deal.powerCard, lang),
+                      )}
+                    </strong>
                     {deal.note && (
                       <>
                         {' '}
@@ -161,7 +170,7 @@ export default function DealActionsCard({
                       )}
                     >
                       <Check className="h-5 w-5" aria-hidden />
-                      {busyDealId === deal.id ? 'Signing…' : 'Accept'}
+                      {busyDealId === deal.id ? s.signing : s.accept}
                     </motion.button>
                     <motion.button
                       type="button"
@@ -175,7 +184,7 @@ export default function DealActionsCard({
                       )}
                     >
                       <X className="h-5 w-5" aria-hidden />
-                      Reject
+                      {s.reject}
                     </motion.button>
                   </div>
                 </motion.li>
@@ -197,7 +206,7 @@ export default function DealActionsCard({
         )}
       >
         <Send className="h-5 w-5" aria-hidden />
-        Send a Deal Offer
+        {s.sendDealOffer}
         {!exhausted && !actionsBlocked && (
           <span
             className="pointer-events-none absolute inset-y-0 -left-1/2 w-1/3 -skew-x-12 bg-gold/25 opacity-0 transition-all duration-200 group-hover:left-full group-hover:opacity-100"
@@ -207,16 +216,16 @@ export default function DealActionsCard({
       </motion.button>
       {exhausted && (
         <p className="mt-2 text-center text-sm font-semibold text-ink-faint">
-          No actions left this round
+          {s.noActionsLeft}
         </p>
       )}
 
       {/* 3c. My sent offers */}
       <div className="mt-6">
-        <h3 className="mb-3 text-lg font-extrabold text-ink">My sent offers</h3>
+        <h3 className="mb-3 text-lg font-extrabold text-ink">{s.mySentOffers}</h3>
         {sent.length === 0 ? (
           <p className="rounded-xl border border-dashed border-hairline px-4 py-3 text-sm font-semibold text-ink-faint">
-            No outgoing offers right now — your pending offers will appear here.
+            {s.noSentOffers}
           </p>
         ) : (
           <ul className="space-y-2">
@@ -236,10 +245,10 @@ export default function DealActionsCard({
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-extrabold text-ink">
-                      {deal.targetCountry} · {deal.dealTypeLabel}
+                      {countryName(deal.targetCountry, lang)} · {dealTypeName(deal.dealType, lang)}
                     </p>
                     <p className="truncate text-xs font-semibold text-ink-soft">
-                      {deal.powerCard} · waiting for an answer
+                      {powerName(deal.powerCard, lang)} · {s.waitingForAnswer}
                     </p>
                   </div>
                   <button
@@ -254,7 +263,7 @@ export default function DealActionsCard({
                     )}
                   >
                     <X className="h-4 w-4" aria-hidden />
-                    {confirmCancelId === deal.id ? 'Sure? Tap again' : 'Cancel'}
+                    {confirmCancelId === deal.id ? s.confirmCancel : s.cancel}
                   </button>
                 </motion.li>
               ))}
