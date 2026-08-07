@@ -187,12 +187,37 @@ async function ensureColumns(): Promise<void> {
 let ensured = false;
 let inflight: Promise<boolean> | null = null;
 
+/** Walk an error and its .cause chain (drizzle wraps driver errors). */
+function* errChain(err: unknown): Generator<{ errno?: number; message?: string }> {
+  let cur: unknown = err;
+  for (let depth = 0; cur && depth < 6; depth++) {
+    yield cur as { errno?: number; message?: string };
+    cur = (cur as { cause?: unknown }).cause;
+  }
+}
+
 function isDuplicateIndexError(err: unknown): boolean {
-  const e = err as { errno?: number; code?: string; message?: string };
-  return (
-    e?.errno === 1061 ||
-    (typeof e?.message === "string" && e.message.includes("Duplicate key name"))
-  );
+  for (const e of errChain(err)) {
+    if (
+      e?.errno === 1061 ||
+      (typeof e?.message === "string" && e.message.includes("Duplicate key name"))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isDuplicateColumnError(err: unknown): boolean {
+  for (const e of errChain(err)) {
+    if (
+      e?.errno === 1060 ||
+      (typeof e?.message === "string" && e.message.includes("Duplicate column name"))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 async function runEnsure(): Promise<boolean> {
@@ -211,8 +236,7 @@ async function runEnsure(): Promise<boolean> {
   try {
     await ensureColumns();
   } catch (err) {
-    const e = err as { errno?: number };
-    if (e?.errno !== 1060) throw err;
+    if (!isDuplicateColumnError(err)) throw err;
   }
   return true;
 }
