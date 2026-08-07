@@ -1,0 +1,359 @@
+/**
+ * game router: polling-friendly state payloads (player / admin / endgame)
+ * plus the round-end bloc choice.
+ */
+import { z } from "zod";
+import { TRPCError } from "@trpc/server";
+import { asc, desc, eq } from "drizzle-orm";
+import {
+  activityLog,
+  blocMemberships,
+  deals,
+  players,
+  type Deal,
+} from "@db/schema";
+import {
+  COUNTRIES,
+  COUNTRY_BY_NAME,
+  DEAL_TYPES,
+  MAX_DEAL_ACTIONS_PER_ROUND,
+  powerCardsOf,
+} from "@contracts/game-data";
+import {
+  biggestBlocNames,
+  computeScore,
+  evaluateMissions,
+  type GameFacts,
+} from "../lib/scoring";
+import { createRouter, publicQuery } from "../middleware";
+import {
+  actionsUsed,
+  buildFacts,
+  currentBlocs,
+  db,
+  existingBlocNames,
+  logActivity,
+  requireAdmin,
+  requireCountry,
+  requirePlayer,
+  requireViewer,
+  type Db,
+} from "./helpers";
+
+const viewerInput = z.object({
+  token: z.string().uuid().optional(),
+  code: z.string().optional(),
+  pin: z.string().optional(),
+});
+
+function presentDeal(d: Deal) {
+  return {
+    id: d.id,
+    round: d.round,
+    initiatorCountry: d.initiatorCountry,
+    targetCountry: d.targetCountry,
+    dealType: d.dealType,
+    dealTypeLabel: DEAL_TYPES[d.dealType],
+    powerCard: d.powerCard,
+    note: d.note,
+    status: d.status,
+    initiatorPoints: d.initiatorPoints,
+    targetPoints: d.targetPoints,
+    createdAt: d.createdAt,
+  };
+}
+
+async function roomDeals(d: Db, roomId: number): Promise<Deal[]> {
+  return d
+    .select()
+    .from(deals)
+    .where(eq(deals.roomId, roomId))
+    .orderBy(asc(deals.id));
+}
+
+/** Feed entry: one signed deal, phrased like a news ticker. */
+function feedEntry(d: Deal) {
+  return {
+    id: d.id,
+    round: d.round,
+    message: `${d.initiatorCountry} signed a ${DEAL_TYPES[d.dealType]} deal with ${d.targetCountry}.`,
+    initiatorCountry: d.initiatorCountry,
+    targetCountry: d.targetCountry,
+    dealTypeLabel: DEAL_TYPES[d.dealType],
+    createdAt: d.createdAt,
+  };
+}
+
+function espionagePayload(countryName: string, facts: GameFacts) {
+  const me = COUNTRY_BY_NAME[countryName];
+  if (!me?.hasEspionage) return null;
+  const peek = facts.peeks.find((p) => p.country === countryName) ?? null;
+  const peekedPrivate = peek
+    ? (COUNTRY_BY_NAME[peek.peekedCountry]?.missions.find(
+        (m) => m.slot === "private",
+      )?.text ?? null)
+    : null;
+  return {
+    allPowerCards: COUNTRIES.map((c) => ({
+      country: c.name,
+      flag: c.flag,
+      assets: c.assets,
+      powerCards: powerCardsOf(c),
+    })),
+    peek: {
+      used: !!peek,
+      peekedCountry: peek?.peekedCountry ?? null,
+      peekedPrivateMission: peekedPrivate,
+    },
+  };
+}
+
+export const gameRouter = createRouter({
+  /** Everything the player dashboard needs, in one polling-friendly payload. */
+  playerState: publicQuery
+    .input(z.object({ token: z.string().uuid() }))
+    .query(async ({ input }) => {
+      const { player, room } = await requirePlayer(input.token);
+      const d = await db();
+      const facts = await buildFacts(d, room);
+      const allDeals = await roomDeals(d, room.id);
+      const blocs = facts.currentBlocs;
+
+      const myCountryName = player.countryName;
+      const myData = myCountryName ? COUNTRY_BY_NAME[myCountryName] : null;
+
+      const sent = allDeals.filter(
+        (x) => x.status === "pending" && x.initiatorCountry === myCountryName,
+      );
+      const incoming = allDeals.filter(
+        (x) => x.status === "pending" && x.targetCountry === myCountryName,
+      );
+      const signed = allDeals.filter(
+        (x) =>
+          x.status === "accepted" &&
+          (x.initiatorCountry === myCountryName ||
+            x.targetCountry === myCountryName),
+      );
+
+      const used = myCountryName
+        ? await actionsUsed(d, room.id, room.currentRound, myCountryName)
+        : 0;
+
+      const accepted = allDeals.filter((x) => x.status === "accepted");
+
+      return {
+        room: {
+          code: room.code,
+          status: room.status,
+          currentRound: room.currentRound,
+          roundPhase: room.roundPhase,
+        },
+        me: {
+          name: player.name,
+          isAdmin: player.isAdmin,
+          countryName: myCountryName,
+        },
+        myCountry: myData,
+        myMissions: myCountryName ? evaluateMissions(myCountryName, facts) : [],
+        myDeals: {
+          sent: sent.map(presentDeal),
+          incoming: incoming.map(presentDeal),
+          signed: signed.map((x) => ({
+            ...presentDeal(x),
+            partner:
+              x.initiatorCountry === myCountryName
+                ? x.targetCountry
+                : x.initiatorCountry,
+            myPoints:
+              x.initiatorCountry === myCountryName
+                ? x.initiatorPoints
+                : x.targetPoints,
+          })),
+        },
+        actions: {
+          used,
+          remaining: Math.max(0, MAX_DEAL_ACTIONS_PER_ROUND - used),
+          max: MAX_DEAL_ACTIONS_PER_ROUND,
+        },
+        feed: accepted.map(feedEntry),
+        publicMissions: COUNTRIES.map((c) => ({
+          country: c.name,
+          flag: c.flag,
+          text: c.missions.find((m) => m.slot === "public")!.text,
+          status:
+            evaluateMissions(c.name, facts).find((m) => m.slot === "public")
+              ?.status ?? "on_track",
+        })),
+        // Current bloc of every country — names only, no scores.
+        blocs,
+        espionage: myCountryName
+          ? espionagePayload(myCountryName, facts)
+          : null,
+      };
+    }),
+
+  /** God view for the teacher dashboard. */
+  adminState: publicQuery
+    .input(z.object({ code: z.string().min(1), pin: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const room = await requireAdmin(input.code, input.pin);
+      const d = await db();
+      const facts = await buildFacts(d, room);
+      const allDeals = await roomDeals(d, room.id);
+      const roomPlayers = await d
+        .select()
+        .from(players)
+        .where(eq(players.roomId, room.id))
+        .orderBy(asc(players.id));
+
+      const countries = await Promise.all(
+        COUNTRIES.map(async (c) => ({
+          country: c.name,
+          flag: c.flag,
+          bloc: facts.currentBlocs[c.name],
+          playerName:
+            roomPlayers.find((p) => p.countryName === c.name)?.name ?? null,
+          missions: evaluateMissions(c.name, facts),
+          score: computeScore(c.name, facts),
+          actionsUsedThisRound:
+            room.status === "playing"
+              ? await actionsUsed(d, room.id, room.currentRound, c.name)
+              : 0,
+        })),
+      );
+
+      const blocHistory = await d
+        .select()
+        .from(blocMemberships)
+        .where(eq(blocMemberships.roomId, room.id))
+        .orderBy(asc(blocMemberships.id));
+
+      const log = await d
+        .select()
+        .from(activityLog)
+        .where(eq(activityLog.roomId, room.id))
+        .orderBy(desc(activityLog.id))
+        .limit(200);
+
+      return {
+        room: {
+          code: room.code,
+          status: room.status,
+          currentRound: room.currentRound,
+          roundPhase: room.roundPhase,
+        },
+        players: roomPlayers.map((p) => ({
+          name: p.name,
+          isAdmin: p.isAdmin,
+          countryName: p.countryName,
+        })),
+        countries,
+        pendingDeals: allDeals
+          .filter((x) => x.status === "pending")
+          .map(presentDeal),
+        allDeals: allDeals.map(presentDeal),
+        blocHistory,
+        activityLog: log.reverse(), // chronological
+      };
+    }),
+
+  /**
+   * Bloc choice, allowed only during the round_end phase. Players may join
+   * one of the existing blocs or found a new one with a custom name.
+   */
+  chooseBloc: publicQuery
+    .input(
+      z.object({
+        token: z.string().uuid(),
+        blocName: z.string().trim().min(2).max(24),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const { player, room } = await requirePlayer(input.token);
+      const myCountry = requireCountry(player);
+      if (room.status !== "playing" || room.roundPhase !== "round_end") {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "Bloc choice opens at the end of each round.",
+        });
+      }
+      const d = await db();
+      // Case-insensitive match against existing blocs keeps names canonical.
+      const existing = await existingBlocNames(d, room.id);
+      const match = existing.find(
+        (b) => b.toLowerCase() === input.blocName.toLowerCase(),
+      );
+      const blocName = match ?? input.blocName;
+
+      const blocs = await currentBlocs(d, room.id);
+      if (blocs[myCountry] === blocName) {
+        return { ok: true, blocName, changed: false };
+      }
+      await d.insert(blocMemberships).values({
+        roomId: room.id,
+        round: room.currentRound,
+        country: myCountry,
+        blocName,
+      });
+      await logActivity(
+        d,
+        room,
+        "bloc",
+        match
+          ? `${myCountry} joined the ${blocName} bloc.`
+          : `${myCountry} founded a new bloc: ${blocName}.`,
+      );
+      return { ok: true, blocName, changed: true };
+    }),
+
+  /**
+   * End-game reveal: final blocs (biggest highlighted, ties included),
+   * ranked scoreboard with per-country breakdown, and the full deal list.
+   * Available to everyone once the game has ended.
+   */
+  finalResults: publicQuery.input(viewerInput).query(async ({ input }) => {
+    const { room } = await requireViewer(input);
+    if (room.status !== "ended") {
+      throw new TRPCError({
+        code: "CONFLICT",
+        message: "The game is not over yet — scores are still secret!",
+      });
+    }
+    const d = await db();
+    const facts = await buildFacts(d, room, { final: true });
+    const allDeals = await roomDeals(d, room.id);
+
+    // Final blocs with member lists.
+    const blocMap = new Map<string, string[]>();
+    for (const c of COUNTRIES) {
+      const bloc = facts.currentBlocs[c.name];
+      blocMap.set(bloc, [...(blocMap.get(bloc) ?? []), c.name]);
+    }
+    const biggest = biggestBlocNames(facts);
+    const blocs = [...blocMap.entries()]
+      .map(([name, members]) => ({
+        name,
+        members,
+        size: members.length,
+        isBiggest: biggest.includes(name),
+      }))
+      .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
+
+    // Ranked scoreboard with full per-country breakdown.
+    const scoreboard = COUNTRIES.map((c) => ({
+      flag: c.flag,
+      ...computeScore(c.name, facts),
+    }))
+      .sort((a, b) => b.total - a.total || a.country.localeCompare(b.country))
+      .map((row, i) => ({ rank: i + 1, ...row }));
+
+    return {
+      roomCode: room.code,
+      rounds: room.currentRound,
+      blocs,
+      winner: scoreboard[0] ?? null,
+      scoreboard,
+      deals: allDeals.map(presentDeal),
+    };
+  }),
+});
