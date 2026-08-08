@@ -280,13 +280,20 @@ export function roundSummaries(state: AdminState): RoundSummary[] {
   return summaries
 }
 
-/** Deterministic membership per round: starting blocs + history rows ≤ round. */
+/**
+ * Deterministic membership per round: starting blocs + history rows ≤ round,
+ * seeded from the room's ACTIVE roster only (not the full 15-country list).
+ */
 export function blocMembershipAtRound(
   history: AdminBlocRow[],
   round: number,
+  roster: string[],
 ): Map<string, string[]> {
   const membership = new Map<string, string>()
-  for (const c of COUNTRIES) membership.set(c.name, c.startingBloc)
+  const active = new Set(roster)
+  for (const c of COUNTRIES) {
+    if (active.has(c.name)) membership.set(c.name, c.startingBloc)
+  }
   const rows = [...history].sort((a, b) => a.id - b.id)
   for (const row of rows) {
     if (row.round <= round) membership.set(row.country, row.blocName)

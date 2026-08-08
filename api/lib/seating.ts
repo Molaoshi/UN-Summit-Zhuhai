@@ -2,9 +2,9 @@
  * Pure seating helpers for the teacher-assigns-countries model (no DB).
  *
  * A country seat is "claimed" when a non-admin player's `countryName` points
- * at it. Only claimed countries participate in missions, scores, deals and
- * espionage; unclaimed-but-active countries still occupy their bloc seats
- * (they count toward biggest_bloc / bloc_size math).
+ * at it. Only claimed countries participate in missions, scores, deals,
+ * espionage and bloc math (biggest_bloc / bloc_size count seated delegates
+ * only — see buildFacts).
  */
 import type { CountryData } from "@contracts/game-data";
 

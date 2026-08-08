@@ -124,7 +124,9 @@ async function buildAdminState(d: Db, room: Room) {
         country: c.name,
         countryZh: c.nameZh ?? c.name,
         flag: c.flag,
-        bloc: facts.currentBlocs[c.name],
+        // facts.currentBlocs is claimed-only; an unclaimed seat still shows
+        // its starting bloc on the admin dashboard.
+        bloc: facts.currentBlocs[c.name] ?? c.startingBloc,
         claimed,
         playerName: holder?.name ?? null,
         playerId: holder?.id ?? null,
@@ -303,8 +305,11 @@ export const gameRouter = createRouter({
             evaluateMissions(c.name, facts).find((m) => m.slot === "public")
               ?.status ?? "on_track",
         })),
-        // Current bloc of every active country — names only, no scores.
+        // Current bloc of every CLAIMED country — names only, no scores.
         blocs,
+        // Joinable bloc names for the round-end choice: starting blocs of the
+        // active roster (even when currently empty) + custom-founded names.
+        blocOptions: await existingBlocNames(d, room),
         espionage: myCountryName
           ? espionagePayload(myCountryName, facts, claimedActive)
           : null,
@@ -415,12 +420,11 @@ export const gameRouter = createRouter({
       .from(players)
       .where(eq(players.roomId, room.id));
     const claimed = claimedCountries(roomPlayers);
-    // Active roster only (unclaimed seats still sit in their blocs, but have
-    // no delegate and earn no score).
     const active = activeCountryData(room);
 
-    // Final blocs list ALL active members; unclaimed ones are flagged so the
-    // frontend can dim them.
+    // Final blocs list CLAIMED members only (facts.currentBlocs is already
+    // claimed-only); empty starting blocs of the active roster still appear
+    // as size-0 sections.
     const blocs = finalBlocSummaries(active, facts, claimed);
 
     // Ranked scoreboard over CLAIMED countries only.

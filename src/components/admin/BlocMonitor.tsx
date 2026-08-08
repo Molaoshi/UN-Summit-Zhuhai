@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { ArrowLeftRight, ChevronDown, Crown, Users } from 'lucide-react'
+import { STARTING_BLOCS } from '@contracts/game-data'
 import BlocBadge from '@/components/BlocBadge'
 import EmptyState from '@/components/EmptyState'
 import {
@@ -28,26 +29,47 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
   const [historyOpen, setHistoryOpen] = useState(false)
   const [openRound, setOpenRound] = useState<number | null>(null)
 
+  // Currently-claimed countries (a seated delegate) — empty chairs count for
+  // nothing in the bloc monitor.
+  const claimedNames = useMemo(
+    () => new Set(state.countries.filter((c) => c.claimed).map((c) => c.country)),
+    [state.countries],
+  )
+
   const groups = useMemo(() => {
     const map = new Map<string, string[]>()
     for (const c of state.countries) {
+      if (!c.claimed) continue
       map.set(c.bloc, [...(map.get(c.bloc) ?? []), c.country])
+    }
+    // Every starting bloc and every known custom bloc gets a group, even an
+    // empty one, so the monitor shows the full landscape.
+    for (const name of STARTING_BLOCS) {
+      if (!map.has(name)) map.set(name, [])
+    }
+    for (const name of customBlocs) {
+      if (!map.has(name)) map.set(name, [])
     }
     return [...map.entries()]
       .map(([name, members]) => ({ name, members: members.sort() }))
       .sort((a, b) => b.members.length - a.members.length || a.name.localeCompare(b.name))
-  }, [state.countries])
+  }, [state.countries, customBlocs])
 
-  const biggestSize = groups[0]?.members.length ?? 0
+  // Biggest-bloc crown ignores empty groups (no crown when every bloc is empty).
+  const biggestSize = groups.reduce((max, g) => Math.max(max, g.members.length), 0)
 
   const historyRounds = useMemo(() => {
     const rounds = [...new Set(state.blocHistory.map((r) => r.round))].sort((a, b) => b - a)
     return rounds.map((round) => {
-      const atRound = blocMembershipAtRound(state.blocHistory, round)
-      const blocs = [...atRound.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+      const atRound = blocMembershipAtRound(state.blocHistory, round, state.activeCountries)
+      // Show only currently-claimed countries in the per-round lists.
+      const blocs = [...atRound.entries()]
+        .map(([name, members]) => [name, members.filter((m) => claimedNames.has(m))] as [string, string[]])
+        .filter(([, members]) => members.length > 0)
+        .sort((a, b) => a[0].localeCompare(b[0]))
       return { round, blocs }
     })
-  }, [state.blocHistory])
+  }, [state.blocHistory, state.activeCountries, claimedNames])
 
   if (!started) {
     return (
@@ -68,7 +90,7 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
       <h2 className="mb-4 font-display text-2xl font-semibold text-ink">{t.title}</h2>
       <div className="space-y-4">
         {groups.map((g) => {
-          const isBiggest = g.members.length === biggestSize && groups.length > 1
+          const isBiggest = g.members.length > 0 && g.members.length === biggestSize && groups.length > 1
           return (
             <motion.div
               key={g.name}
@@ -95,6 +117,11 @@ export default function BlocMonitor({ state, customBlocs, started }: BlocMonitor
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
+                {g.members.length === 0 && (
+                  <span className="inline-flex items-center rounded-full border border-dashed border-hairline px-3 py-1.5 text-sm font-semibold text-ink-faint">
+                    {t.empty}
+                  </span>
+                )}
                 {g.members.map((country) => {
                   const defected = countryStartingBloc(country) !== g.name
                   return (

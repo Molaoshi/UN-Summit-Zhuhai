@@ -30,6 +30,7 @@ import type {
   OverrideFact,
   PeekFact,
 } from "../lib/scoring";
+import { claimedCountries } from "../lib/seating";
 import { getDb } from "../queries/connection";
 import { ensureSchema } from "../lib/ensure-schema";
 
@@ -242,6 +243,17 @@ export async function buildFacts(
   }));
 
   const blocs = await currentBlocs(d, room);
+  // Claimed-only bloc math: an active country with no seated player has an
+  // empty chair — it does not count toward bloc size / biggest-bloc anywhere
+  // (missions, champion bloc, player payloads).
+  const roomPlayers = await d
+    .select()
+    .from(players)
+    .where(eq(players.roomId, room.id));
+  const claimed = claimedCountries(roomPlayers);
+  for (const name of Object.keys(blocs)) {
+    if (!claimed.has(name)) delete blocs[name];
+  }
 
   const peekRows = await d
     .select()

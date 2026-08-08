@@ -10,6 +10,8 @@ import { blocKeyFor } from './helpers'
 
 export interface BlocChoiceCardProps {
   blocs: Record<string, string>
+  /** Joinable bloc names from the server (starting blocs + custom-founded). */
+  blocOptions: string[]
   myCountryName: string
   choosing: boolean
   /** Bumps when a choice succeeded — switches the button to "Change my choice". */
@@ -25,6 +27,7 @@ interface BlocOption {
 /** Round-end bloc choice: stay, join another bloc, or found a new one. */
 export default function BlocChoiceCard({
   blocs,
+  blocOptions,
   myCountryName,
   choosing,
   hasChosen,
@@ -42,9 +45,15 @@ export default function BlocChoiceCard({
   }, [myCurrent])
 
   const options = useMemo<BlocOption[]>(() => {
+    // Member counts come from the (claimed-only) current bloc map; the option
+    // list comes from the server's joinable names, unioned defensively with
+    // any name that appears in the map. Empty blocs stay joinable.
     const counts = new Map<string, number>()
     for (const blocName of Object.values(blocs)) {
       counts.set(blocName, (counts.get(blocName) ?? 0) + 1)
+    }
+    for (const name of blocOptions) {
+      if (!counts.has(name)) counts.set(name, 0)
     }
     const starting = ['Nuclear Energy', 'Green Energy', 'Fossil Fuel']
     return [...counts.entries()]
@@ -57,7 +66,7 @@ export default function BlocChoiceCard({
         }
         return a.name.localeCompare(b.name)
       })
-  }, [blocs])
+  }, [blocs, blocOptions])
 
   const allBlocNames = options.map((o) => o.name)
   const trimmed = newName.trim()
@@ -110,7 +119,7 @@ export default function BlocChoiceCard({
                 showIcon
               />
               <span className="flex-1 text-sm font-semibold text-ink-soft">
-                {s.memberCount(opt.members)}
+                {opt.members === 0 ? s.blocEmpty : s.memberCount(opt.members)}
                 {isCurrent && ` · ${s.yourCurrentBloc}`}
               </span>
               {isSelected && (

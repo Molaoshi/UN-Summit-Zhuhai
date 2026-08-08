@@ -17,13 +17,16 @@ const EASE = [0.22, 1, 0.36, 1] as [number, number, number, number]
 type ShiftStrings = EndgameStrings['blocs']['shift']
 
 /** Word-by-word typewriter fade for the bloc shift note. */
-function ShiftNote({ bloc, delay, t, lang }: { bloc: FinalBloc; delay: number; t: ShiftStrings; lang: 'en' | 'zh' }) {
+function ShiftNote({ bloc, roster, delay, t, lang }: { bloc: FinalBloc; roster: string[]; delay: number; t: ShiftStrings; lang: 'en' | 'zh' }) {
   const isStarting = STARTING_BLOC_META.some((b) => b.name === bloc.name)
   const memberSet = new Set(bloc.members)
-  const gained = bloc.members.filter((m) => COUNTRY_BY_NAME[m]?.startingBloc !== bloc.name)
+  // Gained/lost are scoped to the room's active roster.
+  const gained = bloc.members.filter(
+    (m) => roster.includes(m) && COUNTRY_BY_NAME[m]?.startingBloc !== bloc.name,
+  )
   const lost = isStarting
     ? Object.values(COUNTRY_BY_NAME)
-        .filter((c) => c.startingBloc === bloc.name && !memberSet.has(c.name))
+        .filter((c) => roster.includes(c.name) && c.startingBloc === bloc.name && !memberSet.has(c.name))
         .map((c) => c.name)
     : []
   const flags = (names: string[]) =>
@@ -59,10 +62,12 @@ function ShiftNote({ bloc, delay, t, lang }: { bloc: FinalBloc; delay: number; t
 export interface FinalBlocsProps {
   blocs: FinalBloc[]
   rounds: number
+  /** The room's active roster — scopes the shift notes. */
+  roster: string[]
 }
 
 /** Section 1 — "The New World Order": final blocs, biggest first. */
-export default function FinalBlocs({ blocs, rounds }: FinalBlocsProps) {
+export default function FinalBlocs({ blocs, rounds, roster }: FinalBlocsProps) {
   const { lang } = useLang()
   const t = useStrings(endgameStrings).blocs
   const customs = customBlocNames(blocs.map((b) => b.name))
@@ -132,23 +137,34 @@ export default function FinalBlocs({ blocs, rounds }: FinalBlocsProps) {
               </div>
 
               <div className="relative mt-4 flex flex-wrap gap-2">
-                {bloc.members.map((m, mi) => (
-                  <motion.span
-                    key={m}
-                    initial={{ scale: 0.6, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ ...SPRING, delay: base + 0.25 + mi * 0.06 }}
+                {bloc.size === 0 ? (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ duration: 0.4, delay: base + 0.25 }}
+                    className="w-full rounded-xl border border-dashed border-hairline px-4 py-3 text-sm font-semibold text-ink-faint"
                   >
-                    <CountryChip
-                      flag={COUNTRY_BY_NAME[m]?.flag ?? '🏳️'}
-                      name={countryName(m, lang)}
-                      className="min-h-12 px-4 text-base"
-                    />
-                  </motion.span>
-                ))}
+                    {t.empty}
+                  </motion.p>
+                ) : (
+                  bloc.members.map((m, mi) => (
+                    <motion.span
+                      key={m}
+                      initial={{ scale: 0.6, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ ...SPRING, delay: base + 0.25 + mi * 0.06 }}
+                    >
+                      <CountryChip
+                        flag={COUNTRY_BY_NAME[m]?.flag ?? '🏳️'}
+                        name={countryName(m, lang)}
+                        className="min-h-12 px-4 text-base"
+                      />
+                    </motion.span>
+                  ))
+                )}
               </div>
 
-              <ShiftNote bloc={bloc} delay={base + 0.3 + bloc.members.length * 0.06} t={t.shift} lang={lang} />
+              <ShiftNote bloc={bloc} roster={roster} delay={base + 0.3 + bloc.members.length * 0.06} t={t.shift} lang={lang} />
             </motion.article>
           )
         })}

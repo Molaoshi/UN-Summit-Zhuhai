@@ -485,6 +485,7 @@ export default function Play() {
               <div key="bloc-choice" ref={blocRef} className="order-0 lg:order-none">
                 <BlocChoiceCard
                   blocs={blocs}
+                  blocOptions={data.blocOptions ?? allBlocNames}
                   myCountryName={myCountry.name}
                   choosing={chooseBloc.isPending}
                   hasChosen={blocChosen}

@@ -2,7 +2,10 @@
 
 export interface FinalBloc {
   name: string
+  /** Claimed member countries (empty starting blocs render an empty state). */
   members: string[]
+  /** Subset of members with no seated player (always empty in claimed-only math). */
+  unclaimedMembers?: string[]
   size: number
   isBiggest: boolean
 }
@@ -43,6 +46,8 @@ export interface FinalDeal {
 export interface FinalResults {
   roomCode: string
   rounds: number
+  /** The room's active roster (starting-bloc shift notes are scoped to it). */
+  activeCountries: string[]
   blocs: FinalBloc[]
   winner: ScoreRow | null
   scoreboard: ScoreRow[]

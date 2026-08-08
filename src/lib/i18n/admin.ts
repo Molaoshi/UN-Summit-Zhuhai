@@ -205,6 +205,7 @@ const en = {
     emptyBody: 'Countries begin in their three starting blocs. Alliance shifts appear here at each round end.',
     members: (n: number) => (n === 1 ? '1 member' : `${n} members`),
     biggest: 'Biggest bloc',
+    empty: 'Empty — no countries yet',
     startedIn: (bloc: string) => `Started in ${bloc}`,
     history: (rounds: number) =>
       `Bloc history (${rounds} ${rounds === 1 ? 'round' : 'rounds'})`,
@@ -515,6 +516,7 @@ const zh: AdminStrings = {
     emptyBody: '各国从三个初始联盟开始。每回合结束时，联盟变化会显示在这里。',
     members: (n) => `${n} 个成员`,
     biggest: '最大联盟',
+    empty: '暂无国家',
     startedIn: (bloc) => `起初属于${bloc}`,
     history: (rounds) => `联盟历史（${rounds} 个回合）`,
     roundLine: (round, blocs, sizes) => `第 ${round} 回合 → ${blocs} 个联盟 · ${sizes}`,

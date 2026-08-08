@@ -32,6 +32,7 @@ const lobbyStrings = {
       assetShort: { military: 'MIL', resources: 'RES', energy: 'ENG', tech: 'TEC' },
     },
     blocClaimed: (n: number, total: number) => `${n}/${total} claimed`,
+    blocEmpty: 'No countries in this bloc',
     seatingNote:
       'Your teacher assigns every seat — watch the map to see which country each classmate represents.',
     waiting: {
@@ -120,6 +121,7 @@ const lobbyStrings = {
       assetShort: { military: '军', resources: '资', energy: '能', tech: '科' },
     },
     blocClaimed: (n: number, total: number) => `已入座 ${n}/${total}`,
+    blocEmpty: '该联盟暂无国家',
     seatingNote: '所有席位都由老师分配——看看席位图上每位同学分别代表哪个国家。',
     waiting: {
       title: '已加入！',

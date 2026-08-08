@@ -152,6 +152,9 @@ function DashboardView({
 
   const signedCount = state ? state.allDeals.filter((d) => d.status === 'accepted').length : 0
   const pendingCount = state ? state.pendingDeals.length : 0
+  // Scores & missions cover CLAIMED countries only — unclaimed seats have no
+  // delegate, so they earn nothing and would just be zero rows.
+  const seatedCountries = state ? state.countries.filter((c) => c.claimed) : []
 
   return (
     <AdminCtx.Provider value={ctxValue}>
@@ -193,7 +196,7 @@ function DashboardView({
           <main className="mx-auto grid max-w-[1440px] grid-cols-1 gap-6 px-4 py-6 md:px-8 lg:grid-cols-12">
             <div className="order-2 lg:order-none lg:col-span-7 lg:col-start-1 lg:row-start-1">
               <ScoresTable
-                countries={state.countries}
+                countries={seatedCountries}
                 customBlocs={customBlocs}
                 projector={projector}
                 started={started}
@@ -210,7 +213,7 @@ function DashboardView({
               <DealsMonitor state={state} started={started} />
             </div>
             <div className="order-4 lg:order-none lg:col-span-7 lg:col-start-1 lg:row-span-2 lg:row-start-2">
-              <MissionMatrix countries={state.countries} projector={projector} started={started} readOnly={spectator} />
+              <MissionMatrix countries={seatedCountries} projector={projector} started={started} readOnly={spectator} />
             </div>
             {!spectator && (
               <div className="order-6 lg:order-none lg:col-span-5 lg:col-start-1 lg:row-start-4">

@@ -222,7 +222,7 @@ export default function Endgame() {
 
           {/* Section 1 — Final blocs */}
           {stage >= 1 && (
-            <FinalBlocs key={`blocs-${runId}`} blocs={results.blocs} rounds={results.rounds} />
+            <FinalBlocs key={`blocs-${runId}`} blocs={results.blocs} rounds={results.rounds} roster={results.activeCountries} />
           )}
 
           {/* Section 2 — Scoreboard */}

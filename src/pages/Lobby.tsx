@@ -273,7 +273,6 @@ export default function Lobby() {
               {STARTING_BLOC_META.map((bloc, bi) => {
                 // Seats are already filtered to the room's active countries.
                 const blocSeats = seats.filter((s) => s.startingBloc === bloc.name)
-                if (blocSeats.length === 0) return null
                 const blocClaimed = blocSeats.filter((s) => s.claimedBy !== null).length
                 const label = blocName(bloc.name, lang)
                 return (
@@ -306,22 +305,28 @@ export default function Lobby() {
                         {s.blocClaimed(blocClaimed, blocSeats.length)}
                       </span>
                     </div>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                      {blocSeats.map((seat, si) => {
-                        const country = COUNTRY_BY_NAME[seat.country]
-                        if (!country) return null
-                        return (
-                          <SeatCard
-                            key={seat.country}
-                            seat={seat}
-                            data={country}
-                            mine={mySeat?.country === seat.country}
-                            pulse={pulsing.has(seat.country)}
-                            staggerDelay={0.1 * bi + 0.05 * si}
-                          />
-                        )
-                      })}
-                    </div>
+                    {blocSeats.length === 0 ? (
+                      <p className="rounded-xl border border-dashed border-hairline px-4 py-3 text-sm font-semibold text-ink-faint">
+                        {s.blocEmpty}
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {blocSeats.map((seat, si) => {
+                          const country = COUNTRY_BY_NAME[seat.country]
+                          if (!country) return null
+                          return (
+                            <SeatCard
+                              key={seat.country}
+                              seat={seat}
+                              data={country}
+                              mine={mySeat?.country === seat.country}
+                              pulse={pulsing.has(seat.country)}
+                              staggerDelay={0.1 * bi + 0.05 * si}
+                            />
+                          )
+                        })}
+                      </div>
+                    )}
                   </motion.section>
                 )
               })}

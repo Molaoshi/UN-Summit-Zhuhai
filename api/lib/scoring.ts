@@ -56,7 +56,8 @@ export interface AdjustmentFact {
 export interface GameFacts {
   /** Accepted deals only (pending/cancelled never count). */
   deals: DealFact[];
-  /** Current bloc per country (latest membership row). */
+  /** Current bloc per CLAIMED country (latest membership row; the router
+   *  deletes unclaimed seats so bloc math counts seated delegates only). */
   currentBlocs: Record<string, string>;
   peeks: PeekFact[];
   /** Latest override per (country, slot) — resolved by the caller. */
@@ -433,9 +434,9 @@ export type ScoreboardRow = ScoreBreakdown & {
 
 /**
  * Ranked final scoreboard over the CLAIMED countries only — an unclaimed
- * seat has no delegate, so it earns no missions or points. Unclaimed
- * countries still count inside the bloc math above (they are seats at the
- * summit), which is why `facts` must carry ALL active countries' blocs.
+ * seat has no delegate, so it earns no missions or points and does not
+ * count toward bloc math either (the router strips it from
+ * `facts.currentBlocs`).
  */
 export function claimedScoreboard(
   active: CountryData[],
@@ -453,10 +454,10 @@ export function claimedScoreboard(
     .map((row, i) => ({ rank: i + 1, ...row }));
 }
 
-/** Final bloc summary; members list ALL active countries (claimed or not). */
+/** Final bloc summary; members are the CLAIMED countries sitting in it. */
 export interface FinalBlocSummary {
   name: string;
-  /** All active member countries, claimed or not. */
+  /** Claimed member countries (unclaimed seats have no delegate). */
   members: string[];
   /** Subset of members with no seated player (frontend dims these). */
   unclaimedMembers: string[];
@@ -465,9 +466,11 @@ export interface FinalBlocSummary {
 }
 
 /**
- * Final blocs with member lists. Membership/size/biggest use the full active
- * roster (unclaimed seats still sit in their bloc); unclaimed members are
- * flagged separately so the UI can render them as empty chairs.
+ * Final blocs with member lists. Membership/size/biggest come from
+ * `facts.currentBlocs`, which the router has already restricted to claimed
+ * countries (unclaimed seats are empty chairs — they count for nothing).
+ * Starting blocs of the active roster always appear, even with zero members,
+ * so the endgame reveal can show them as empty sections.
  */
 export function finalBlocSummaries(
   active: CountryData[],
@@ -477,7 +480,13 @@ export function finalBlocSummaries(
   const blocMap = new Map<string, string[]>();
   for (const c of active) {
     const bloc = facts.currentBlocs[c.name];
+    if (!bloc) continue; // unclaimed seat: no delegate, no bloc entry
     blocMap.set(bloc, [...(blocMap.get(bloc) ?? []), c.name]);
+  }
+  // Every starting bloc present in the active roster gets an entry, even
+  // when nobody sits in it anymore (never invent empty custom blocs).
+  for (const c of active) {
+    if (!blocMap.has(c.startingBloc)) blocMap.set(c.startingBloc, []);
   }
   const biggest = biggestBlocNames(facts);
   return [...blocMap.entries()]
@@ -486,7 +495,7 @@ export function finalBlocSummaries(
       members,
       unclaimedMembers: members.filter((m) => !claimed.has(m)),
       size: members.length,
-      isBiggest: biggest.includes(name),
+      isBiggest: members.length > 0 && biggest.includes(name),
     }))
     .sort((a, b) => b.size - a.size || a.name.localeCompare(b.name));
 }

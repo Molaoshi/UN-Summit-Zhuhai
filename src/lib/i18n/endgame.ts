@@ -21,7 +21,8 @@ const en = {
     kicker: (rounds: number) => `Final blocs · Round ${rounds}`,
     title: 'Where the alliances ended',
     foundedBy: 'Founded by a delegate',
-    biggest: (size: number) => `Biggest bloc — ${size} members`,
+    biggest: (size: number) => `Champion bloc — ${size} countries`,
+    empty: 'Empty — no countries',
     shift: {
       startedAs: (name: string) => `Started as: ${name}`,
       gained: (flags: string) => `Gained: ${flags}`,
@@ -109,7 +110,8 @@ const zh: EndgameStrings = {
     kicker: (rounds) => `最终联盟 · 第 ${rounds} 回合`,
     title: '联盟的最终格局',
     foundedBy: '由代表创建',
-    biggest: (size) => `最大联盟——${size} 个成员`,
+    biggest: (size) => `冠军联盟——${size} 个国家`,
+    empty: '暂无国家',
     shift: {
       startedAs: (name) => `初始联盟：${name}`,
       gained: (flags) => `新加入：${flags}`,

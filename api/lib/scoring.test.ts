@@ -283,14 +283,16 @@ describe("claimed-only missions & scores", () => {
     expect(board.find((r) => r.country === "Japan")).toBeUndefined();
   });
 
-  it("unclaimed countries still count toward bloc size / biggest_bloc", () => {
+  it("finalBlocSummaries lists every country in the given bloc map and flags unclaimed members", () => {
+    // The scoring engine honors whatever map it is given (buildFacts strips
+    // unclaimed seats upstream); here a full 15-country map keeps Chile's
+    // seat visible and flags it as unclaimed.
     const facts = makeFacts({ final: true }); // 5/5/5 starting blocs
     const allButChile = new Set(
       COUNTRIES.map((c) => c.name).filter((n) => n !== "Chile"),
     );
     const blocs = finalBlocSummaries(COUNTRIES, facts, allButChile);
     const green = blocs.find((b) => b.name === "Green Energy")!;
-    // Chile's empty chair still sits in the Green Energy bloc.
     expect(green.size).toBe(5);
     expect(green.members).toContain("Chile");
     expect(green.unclaimedMembers).toEqual(["Chile"]);
@@ -299,20 +301,86 @@ describe("claimed-only missions & scores", () => {
     expect(nuclear.unclaimedMembers).toEqual([]);
   });
 
-  it("biggest_bloc math includes unclaimed members when deciding missions", () => {
-    // Saudi Arabia's bonus mission is biggest_bloc. The scoring engine works
-    // on the FULL bloc map (claimed + unclaimed), so an unclaimed member's
-    // seat still props up the bloc size of claimed countries' missions.
+  it("biggest_bloc math uses the given bloc map when deciding missions", () => {
+    // Saudi Arabia's bonus mission is biggest_bloc. With a full 15-country
+    // map the 5/5/5 tie completes it; in production buildFacts hands the
+    // engine a claimed-only map, so empty chairs never prop up a bloc.
     const cond = missionOf("Saudi Arabia", "bonus").condition;
     const facts = makeFacts({ final: true }); // all 15 present: 5/5/5 tie
     expect(evaluateCondition("Saudi Arabia", cond, facts)).toBe("completed");
-    // Even if every other Nuclear Energy seat were unclaimed, Saudi Arabia's
-    // mission still sees the full 5-seat bloc.
+    // claimedScoreboard restricts the RANKING to claimed countries but still
+    // evaluates each claimed country's missions against the given bloc map.
     const claimed = new Set(["Saudi Arabia"]);
     const board = claimedScoreboard(COUNTRIES, facts, claimed);
     const sa = board.find((r) => r.country === "Saudi Arabia")!;
     expect(sa.missions.find((m) => m.slot === "bonus")!.status).toBe(
       "completed",
     );
+  });
+});
+
+describe("finalBlocSummaries with claimed-only bloc maps", () => {
+  it("emits an empty entry for every active-roster starting bloc with no members", () => {
+    // Only two Nuclear countries are claimed; Green/Fossil have active-roster
+    // seats but no delegates, so they show up as empty sections.
+    const facts = makeFacts({
+      final: true,
+      currentBlocs: { USA: "Nuclear Energy", China: "Nuclear Energy" },
+    });
+    const claimed = new Set(["USA", "China"]);
+    const blocs = finalBlocSummaries(COUNTRIES, facts, claimed);
+    expect(blocs.map((b) => b.name)).toEqual([
+      "Nuclear Energy", // size 2 sorts first…
+      "Fossil Fuel", // …then empty blocs by name
+      "Green Energy",
+    ]);
+    const fossil = blocs.find((b) => b.name === "Fossil Fuel")!;
+    expect(fossil).toMatchObject({
+      members: [],
+      unclaimedMembers: [],
+      size: 0,
+      isBiggest: false,
+    });
+    const green = blocs.find((b) => b.name === "Green Energy")!;
+    expect(green.size).toBe(0);
+    expect(green.isBiggest).toBe(false);
+  });
+
+  it("does not invent empty custom blocs", () => {
+    const facts = makeFacts({
+      final: true,
+      currentBlocs: { USA: "Nuclear Energy" },
+    });
+    const blocs = finalBlocSummaries(COUNTRIES, facts, new Set(["USA"]));
+    expect(blocs.map((b) => b.name).sort()).toEqual([
+      "Fossil Fuel",
+      "Green Energy",
+      "Nuclear Energy",
+    ]);
+  });
+
+  it("keeps custom blocs that have claimed members", () => {
+    const facts = makeFacts({
+      final: true,
+      currentBlocs: { USA: "Pacific Alliance", Japan: "Pacific Alliance" },
+    });
+    const claimed = new Set(["USA", "Japan"]);
+    const blocs = finalBlocSummaries(COUNTRIES, facts, claimed);
+    const custom = blocs.find((b) => b.name === "Pacific Alliance")!;
+    expect(custom.size).toBe(2);
+    expect(custom.isBiggest).toBe(true); // only non-empty bloc
+    // Empty starting blocs still trail behind.
+    expect(blocs.filter((b) => b.size === 0).map((b) => b.name)).toEqual([
+      "Fossil Fuel",
+      "Green Energy",
+      "Nuclear Energy",
+    ]);
+  });
+
+  it("crowns no bloc when every bloc is empty", () => {
+    const facts = makeFacts({ final: true, currentBlocs: {} });
+    const blocs = finalBlocSummaries(COUNTRIES, facts, new Set());
+    expect(blocs).toHaveLength(3); // the three starting blocs only
+    expect(blocs.every((b) => b.size === 0 && !b.isBiggest)).toBe(true);
   });
 });
